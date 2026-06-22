@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>单店销售诊断工作台</title>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Hanken+Grotesk:wght@600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet" />
+  <script>
+    window.tailwind = window.tailwind || {};
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: "#003da6",
+            "primary-soft": "#e6edff",
+            surface: "#f8f9ff",
+            "surface-card": "#ffffff",
+            "surface-line": "#d9e2f2",
+            "text-main": "#0b1c30",
+            "text-muted": "#5f6f85",
+            warning: "#b45f06",
+            danger: "#b42318",
+            success: "#067647",
+            teal: "#006c4a"
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            display: ["Hanken Grotesk", "Inter", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          },
+          borderRadius: {
+            DEFAULT: "0.125rem",
+            md: "0.25rem",
+            lg: "0.5rem"
+          },
+          boxShadow: {
+            panel: "0 12px 28px rgba(11, 28, 48, 0.08)"
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body { font-family: Inter, sans-serif; background: #f8f9ff; color: #0b1c30; }
+    .material-symbols-outlined { font-variation-settings: "FILL" 0, "wght" 430, "GRAD" 0, "opsz" 24; }
+    .trend-down { color: #b42318; }
+    .trend-up { color: #067647; }
+    .custom-scrollbar::-webkit-scrollbar { height: 7px; width: 7px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #eef3ff; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #bfcae0; border-radius: 999px; }
+    .metric-card { min-height: 116px; }
+    .drawer-backdrop { opacity: 0; pointer-events: none; transition: opacity 160ms ease; }
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+    .drawer-panel { transform: translateX(100%); transition: transform 180ms ease; }
+    .drawer-backdrop.open .drawer-panel { transform: translateX(0); }
+    .tab-active { color: #003da6; border-color: #003da6; background: #e6edff; }
+    .row-selected { background: #f0f5ff; }
+    .soft-connector {
+      height: 62px;
+      margin: -4px 0 -10px;
+      pointer-events: none;
+    }
+    .soft-connector path {
+      fill: none;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.42;
+    }
+    .process-panel {
+      min-height: 250px;
+    }
+    .process-panel.active-ip {
+      border-color: #003da6;
+      background: #f7faff;
+      box-shadow: inset 0 0 0 1px rgba(0, 61, 166, 0.16);
+    }
+    .process-panel.active-drive {
+      border-color: #006c4a;
+      background: #f5fffa;
+      box-shadow: inset 0 0 0 1px rgba(0, 108, 74, 0.14);
+    }
+    .trend-popover {
+      width: min(560px, calc(100vw - 32px));
+    }
+    @media (max-width: 768px) {
+      .drawer-panel { width: min(100vw, 440px); }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-surface">
+  <header class="sticky top-0 z-30 border-b border-surface-line bg-white/95 backdrop-blur">
+    <div class="mx-auto flex max-w-[1440px] flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2 text-xs font-semibold text-text-muted">
+          <span>单个门店销售诊断工作台</span>
+        </div>
+        <h1 class="mt-2 font-display text-2xl font-bold tracking-normal text-text-main md:text-[28px]">上海浦东荣威体验中心</h1>
+      </div>
+      <div class="flex w-full flex-wrap items-end gap-2 md:w-auto md:justify-end">
+        <label class="grid gap-1 text-xs font-semibold text-text-muted">
+          大区
+          <select class="h-9 min-w-[104px] rounded border border-surface-line bg-white px-2 text-sm font-semibold text-text-main shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft">
+            <option>华东大区</option>
+            <option>华南大区</option>
+            <option>华北大区</option>
+          </select>
+        </label>
+        <label class="grid gap-1 text-xs font-semibold text-text-muted">
+          小区
+          <select class="h-9 min-w-[112px] rounded border border-surface-line bg-white px-2 text-sm font-semibold text-text-main shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft">
+            <option>上海一区</option>
+            <option>上海二区</option>
+            <option>苏南一区</option>
+          </select>
+        </label>
+        <label class="grid gap-1 text-xs font-semibold text-text-muted">
+          经销商
+          <select class="h-9 min-w-[220px] rounded border border-surface-line bg-white px-2 text-sm font-semibold text-text-main shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft">
+            <option>上海浦东荣威体验中心</option>
+            <option>上海闵行荣威体验中心</option>
+            <option>苏州工业园荣威体验中心</option>
+          </select>
+        </label>
+        <label class="grid gap-1 text-xs font-semibold text-text-muted">
+          月份
+          <select class="h-9 min-w-[118px] rounded border border-surface-line bg-white px-2 text-sm font-semibold text-text-main shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft">
+            <option>2026年6月</option>
+            <option>2026年5月</option>
+            <option>2026年4月</option>
+          </select>
+        </label>
+        <button class="inline-flex h-9 items-center gap-1 rounded bg-primary px-3 text-sm font-semibold text-white">
+          <span class="material-symbols-outlined text-[18px]">refresh</span>
+          重新诊断
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-[1440px] px-4 py-5 md:px-6">
+    <section>
+      <div class="rounded-lg border border-surface-line bg-surface-card p-4 shadow-sm">
+        <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <p class="text-sm font-semibold text-primary">AI 诊断</p>
+            <h2 class="mt-1 font-display text-xl font-bold">订单转化偏弱，主要断点在客户到店；邀约质量和试驾顾虑承接是本周优先改善项。</h2>
+          </div>
+          <div class="grid shrink-0 grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <span class="rounded border border-red-200 bg-red-50 px-2.5 py-2 font-semibold text-danger">订单 9 ↓18.1%</span>
+            <span class="rounded border border-red-200 bg-red-50 px-2.5 py-2 font-semibold text-danger">到店率 28.0% ↓1.6pct</span>
+            <span class="rounded border border-emerald-200 bg-emerald-50 px-2.5 py-2 font-semibold text-success">负向邀约 24.5% ↑3.5pct</span>
+            <span class="rounded border border-emerald-200 bg-emerald-50 px-2.5 py-2 font-semibold text-success">负向试驾接待 22.6% ↑2.9pct</span>
+          </div>
+        </div>
+        <div class="mt-4 grid gap-3 md:grid-cols-3">
+          <div class="border-l-4 border-primary bg-white px-3 py-2">
+            <p class="text-xs font-semibold text-text-muted">结果断点</p>
+            <p class="mt-1 text-sm font-semibold">客户到店不足，线索订单率偏弱</p>
+          </div>
+          <div class="border-l-4 border-warning bg-white px-3 py-2">
+            <p class="text-xs font-semibold text-text-muted">过程原因</p>
+            <p class="mt-1 text-sm font-semibold">邀约质量不足，接待技巧承接不足</p>
+          </div>
+          <div class="border-l-4 border-teal bg-white px-3 py-2">
+            <p class="text-xs font-semibold text-text-muted">优先动作</p>
+            <p class="mt-1 text-sm font-semibold">12 条高风险明细回访，复盘邀约和试驾话术</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="processLayer" class="mt-5 rounded-lg border border-surface-line bg-surface-card p-4 shadow-sm">
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 class="font-display text-xl font-bold">销售漏斗</h2>
+        </div>
+      </div>
+      <div class="mt-4">
+        <div>
+          <div id="funnelGrid" class="grid gap-3 md:grid-cols-[1fr_0.7fr_1fr_0.7fr] xl:grid-cols-[1fr_0.62fr_1fr_0.62fr_1fr_0.62fr_1fr_0.62fr]"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-5 rounded-lg border border-surface-line bg-surface-card p-4 shadow-sm">
+      <div>
+        <h2 class="font-display text-xl font-bold">过程指标</h2>
+      </div>
+      <div class="mt-4 grid items-stretch gap-4 xl:grid-cols-2">
+        <div id="ipProcessPanel" data-process-group="ip" class="process-panel flex h-full cursor-pointer flex-col rounded border border-surface-line p-4 transition hover:border-primary hover:shadow-sm">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 text-sm font-bold text-text-main">
+              <span class="material-symbols-outlined text-[18px] text-primary">call</span>
+              邀约过程
+            </div>
+            <button type="button" data-trend-more="ip" class="inline-flex h-8 w-8 items-center justify-center rounded border border-surface-line bg-white text-text-muted transition hover:border-primary hover:text-primary" aria-label="查看邀约过程日趋势">
+              <span class="material-symbols-outlined text-[20px]">more_horiz</span>
+            </button>
+          </div>
+          <div id="ipMetrics" class="grid gap-3 lg:grid-cols-3"></div>
+        </div>
+        <div id="driveProcessPanel" data-process-group="drive" class="process-panel flex h-full cursor-pointer flex-col rounded border border-surface-line p-4 transition hover:border-teal hover:shadow-sm">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 text-sm font-bold text-text-main">
+              <span class="material-symbols-outlined text-[18px] text-teal">directions_car</span>
+              试驾过程
+            </div>
+            <button type="button" data-trend-more="drive" class="inline-flex h-8 w-8 items-center justify-center rounded border border-surface-line bg-white text-text-muted transition hover:border-teal hover:text-teal" aria-label="查看试驾过程日趋势">
+              <span class="material-symbols-outlined text-[20px]">more_horiz</span>
+            </button>
+          </div>
+          <div id="driveMetrics" class="grid gap-3 lg:grid-cols-3"></div>
+        </div>
+      </div>
+    </section>
+
+    <div id="softConnector" class="soft-connector"></div>
+
+    <section id="detailDiagnosis" class="mt-5 rounded-lg border border-surface-line bg-surface-card p-4 shadow-sm">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p class="text-sm font-semibold text-primary">第三层</p>
+          <h2 id="detailTitle" class="font-display text-xl font-bold">IP 电话和试驾接待技巧明细诊断</h2>
+        </div>
+        <div class="flex rounded border border-surface-line bg-slate-50 p-1" role="tablist" aria-label="明细诊断类型">
+          <button id="ipTab" class="tab-active inline-flex h-9 items-center gap-1 rounded border px-3 text-sm font-semibold" data-tab="ip">
+            <span class="material-symbols-outlined text-[18px]">call</span>
+            邀约技巧
+          </button>
+          <button id="driveTab" class="inline-flex h-9 items-center gap-1 rounded border border-transparent px-3 text-sm font-semibold text-text-muted" data-tab="drive">
+            <span class="material-symbols-outlined text-[18px]">directions_car</span>
+            接待技巧
+          </button>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-4 xl:grid-cols-2">
+        <div class="rounded border border-surface-line bg-white">
+          <div class="flex items-center justify-between gap-3 border-b border-surface-line px-3 py-2">
+            <h3 class="text-sm font-bold">标签分布</h3>
+            <div id="tagSummary" class="flex flex-wrap justify-end gap-2 text-xs"></div>
+          </div>
+          <div id="tagDistribution" class="p-3"></div>
+        </div>
+        <div class="rounded border border-surface-line bg-white">
+          <div class="border-b border-slate-300 bg-white px-3 py-2">
+            <h3 class="text-sm font-bold">顾问分布</h3>
+          </div>
+          <div id="advisorDistribution" class="grid gap-2 p-3"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 min-w-0 rounded border border-surface-line">
+          <div class="flex items-center justify-between gap-3 border-b border-surface-line px-3 py-2">
+            <h3 class="text-sm font-bold">明细清单</h3>
+            <span id="recordCount" class="rounded bg-primary-soft px-2 py-1 text-xs font-semibold text-primary"></span>
+          </div>
+          <div class="custom-scrollbar overflow-x-auto">
+            <table class="min-w-[880px] w-full text-left text-sm">
+              <thead class="bg-slate-50 text-xs font-semibold text-text-muted">
+                <tr>
+                  <th class="px-3 py-2">客户</th>
+                  <th class="px-3 py-2">顾问</th>
+                  <th class="px-3 py-2">事件时间</th>
+                  <th class="px-3 py-2">AI 标签</th>
+                  <th class="px-3 py-2">问题摘要</th>
+                  <th class="px-3 py-2">风险</th>
+                </tr>
+              </thead>
+              <tbody id="detailRows" class="divide-y divide-surface-line"></tbody>
+            </table>
+          </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="trendPopover" class="trend-popover fixed z-40 hidden rounded-lg border border-surface-line bg-white p-4 shadow-panel" role="dialog" aria-hidden="true">
+    <div class="mb-3 flex items-center justify-between gap-3">
+      <div>
+        <p id="trendPopoverEyebrow" class="text-xs font-semibold text-primary"></p>
+        <h3 id="trendPopoverTitle" class="mt-1 text-sm font-bold"></h3>
+      </div>
+      <button id="closeTrendPopover" type="button" class="inline-flex h-8 w-8 items-center justify-center rounded border border-surface-line text-text-muted hover:bg-slate-50" aria-label="关闭趋势浮窗">
+        <span class="material-symbols-outlined text-[18px]">close</span>
+      </button>
+    </div>
+    <div id="trendChart" class="rounded border border-surface-line bg-slate-50 p-3"></div>
+    <div id="trendLegend" class="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs"></div>
+  </div>
+
+  <div id="drawer" class="drawer-backdrop fixed inset-0 z-50 bg-slate-900/25" aria-hidden="true">
+    <aside class="drawer-panel ml-auto flex h-full w-[440px] max-w-full flex-col bg-white shadow-panel">
+      <div class="flex items-start justify-between gap-4 border-b border-surface-line p-4">
+        <div>
+          <p id="drawerType" class="text-xs font-semibold text-primary">诊断明细</p>
+          <h2 id="drawerTitle" class="mt-1 font-display text-xl font-bold">客户明细</h2>
+        </div>
+        <button id="closeDrawer" class="inline-flex h-9 w-9 items-center justify-center rounded border border-surface-line text-text-muted hover:bg-slate-50" aria-label="关闭详情">
+          <span class="material-symbols-outlined text-[20px]">close</span>
+        </button>
+      </div>
+      <div class="custom-scrollbar flex-1 overflow-y-auto p-4">
+        <dl class="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt class="text-xs font-semibold text-text-muted">客户</dt>
+            <dd id="drawerCustomer" class="mt-1 font-semibold"></dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold text-text-muted">顾问</dt>
+            <dd id="drawerAdvisor" class="mt-1 font-semibold"></dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold text-text-muted">事件时间</dt>
+            <dd id="drawerTime" class="mt-1 font-semibold"></dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold text-text-muted">AI 标签</dt>
+            <dd id="drawerTag" class="mt-1 font-semibold text-primary"></dd>
+          </div>
+        </dl>
+        <div class="mt-5 space-y-4">
+          <section>
+            <h3 class="text-sm font-bold">问题摘要</h3>
+            <p id="drawerSummary" class="mt-2 rounded border border-surface-line bg-slate-50 p-3 text-sm leading-6"></p>
+          </section>
+          <section>
+            <h3 class="text-sm font-bold">证据摘录</h3>
+            <blockquote id="drawerEvidence" class="mt-2 border-l-4 border-primary bg-primary-soft p-3 text-sm leading-6 text-text-main"></blockquote>
+          </section>
+          <section>
+            <h3 class="text-sm font-bold">建议话术</h3>
+            <p id="drawerScript" class="mt-2 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-text-main"></p>
+          </section>
+          <section>
+            <h3 class="text-sm font-bold">下一步动作</h3>
+            <div class="mt-2 grid gap-2 text-sm">
+              <button class="flex items-center justify-between rounded border border-surface-line px-3 py-2 text-left font-semibold hover:bg-slate-50">
+                建立回访任务
+                <span class="material-symbols-outlined text-[18px]">task_alt</span>
+              </button>
+              <button class="flex items-center justify-between rounded border border-surface-line px-3 py-2 text-left font-semibold hover:bg-slate-50">
+                加入顾问复盘清单
+                <span class="material-symbols-outlined text-[18px]">groups</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    const funnelMetrics = [
+      { label: "下发线索", value: "168", unit: "条", compare: "月环比 -6.2%", trend: "down", rank: "2/8" },
+      { label: "到店", value: "47", unit: "人", compare: "月环比 -11.3%", trend: "down", rank: "5/8" },
+      { label: "试驾", value: "31", unit: "人", compare: "月环比 +3.3%", trend: "up", rank: "3/8" },
+      { label: "订单", value: "9", unit: "单", compare: "月环比 -18.1%", trend: "down", rank: "6/8" },
+      { label: "线索到店率", value: "28.0", unit: "%", compare: "月环比 -1.6pct", trend: "down" },
+      { label: "到店试驾率", value: "66.0", unit: "%", compare: "月环比 +9.3pct", trend: "up" },
+      { label: "试驾订单率", value: "29.0", unit: "%", compare: "月环比 -2.4pct", trend: "down" },
+      { label: "线索订单率", value: "5.4", unit: "%", compare: "月环比 -0.8pct", trend: "down" }
+    ];
+
+    const processMetrics = {
+      ip: [
+        { label: "IP电话接通率", value: "62.4%", mom: "-3.2pct", trend: "down" },
+        { label: "30s以下线索占比", value: "36.8%", mom: "+4.1pct", trend: "up" },
+        { label: "30分钟外呼率", value: "71.2%", mom: "-5.6pct", trend: "down" },
+        { label: "2天3呼率", value: "54.7%", mom: "-6.8pct", trend: "down" },
+        { label: "负向邀约占比", value: "24.5%", mom: "+3.5pct", trend: "up" }
+      ],
+      drive: [
+        { label: "试驾平均里程", value: "4.8km", mom: "-0.7km", trend: "down" },
+        { label: "平均时长", value: "18min", mom: "-3min", trend: "down" },
+        { label: "负向试驾接待占比", value: "22.6%", mom: "+2.9pct", trend: "up" }
+      ]
+    };
+
+    const processMetricGroups = {
+      ip: [
+        { title: "线索质量", defaultMetric: "IP电话接通率", metrics: ["IP电话接通率", "30s以下线索占比"] },
+        { title: "勤奋度", defaultMetric: "30分钟外呼率", metrics: ["30分钟外呼率", "2天3呼率"] },
+        { title: "邀约技巧", defaultMetric: "负向邀约占比", metrics: ["负向邀约占比"] }
+      ],
+      drive: [
+        { title: "试驾强度", defaultMetric: "试驾平均里程", metrics: ["试驾平均里程"] },
+        { title: "体验时长", defaultMetric: "平均时长", metrics: ["平均时长"] },
+        { title: "接待技巧", defaultMetric: "负向试驾接待占比", metrics: ["负向试驾接待占比"] }
+      ]
+    };
+
+    const dailyTrendData = {
+      ip: {
+        eyebrow: "邀约过程",
+        title: "第二层指标日趋势",
+        yMin: 0,
+        yMax: 100,
+        ySuffix: "%",
+        days: ["06-01", "06-03", "06-05", "06-07", "06-09", "06-11", "06-13", "06-15", "06-17"],
+        series: [
+          { name: "IP电话接通率", color: "#003da6", values: [66, 64, 65, 63, 62, 61, 63, 62, 62.4] },
+          { name: "30s以下线索占比", color: "#006c4a", values: [32, 33, 34, 35, 35, 36, 37, 36, 36.8] },
+          { name: "30分钟外呼率", color: "#b45f06", values: [78, 76, 75, 74, 73, 72, 72, 71, 71.2] },
+          { name: "2天3呼率", color: "#7c3aed", values: [62, 61, 60, 59, 58, 56, 55, 55, 54.7] },
+          { name: "负向邀约占比", color: "#b42318", values: [20, 21, 22, 22, 23, 24, 24, 25, 24.5] }
+        ]
+      },
+      drive: {
+        eyebrow: "试驾过程",
+        title: "第二层指标日趋势",
+        normalize: true,
+        yMin: 0,
+        yMax: 100,
+        days: ["06-01", "06-03", "06-05", "06-07", "06-09", "06-11", "06-13", "06-15", "06-17"],
+        series: [
+          { name: "试驾平均里程", color: "#003da6", values: [5.4, 5.2, 5.1, 5.1, 5.0, 4.9, 4.8, 4.8, 4.8] },
+          { name: "平均时长", color: "#b45f06", values: [22, 21, 21, 20, 20, 19, 18, 18, 18] },
+          { name: "负向试驾接待占比", color: "#b42318", values: [18, 19, 19, 20, 21, 22, 22, 23, 22.6] }
+        ]
+      }
+    };
+
+    const diagnosis = {
+      ip: {
+        name: "IP 电话",
+        tags: [
+          {
+            label: "到店时间锁定", count: 18, percent: 36,
+            children: [
+              { label: "到店时间主动询问", count: 7 },
+              { label: "具体日期/时段确认", count: 6 },
+              { label: "客户时间障碍处理", count: 5 }
+            ]
+          },
+          {
+            label: "到店理由构建", count: 14, percent: 28,
+            children: [
+              { label: "邀约钩子构建", count: 5 },
+              { label: "客户顾虑收益转化", count: 4 },
+              { label: "试驾体验钩子构建", count: 3 },
+              { label: "金融/置换钩子构建", count: 2 }
+            ]
+          },
+          {
+            label: "报价到店承接", count: 11, percent: 22,
+            children: [
+              { label: "电话报价到店转化", count: 11 }
+            ]
+          },
+          {
+            label: "竞品比较转化", count: 7, percent: 14,
+            children: [
+              { label: "竞品取舍建议", count: 2 },
+              { label: "竞品对比关注点与差异讲解", count: 2 },
+              { label: "竞品口碑疑虑承接", count: 2 },
+              { label: "竞品问题到店验证转化", count: 1 }
+            ]
+          }
+        ],
+        advisors: [
+          { name: "陈明", count: 13, risk: "高" },
+          { name: "周莉", count: 10, risk: "中" },
+          { name: "王磊", count: 9, risk: "中" },
+          { name: "李娜", count: 6, risk: "低" }
+        ],
+        records: [
+          {
+            customer: "客户 A1368", advisor: "陈明", time: "2026-06-17 10:42", tag: "到店时间锁定", risk: "高",
+            summary: "顾问确认客户有购车计划，但未给出明确到店时间选项，客户仅回复再看看。",
+            evidence: "客户说周末可能有空，顾问回复方便再联系，没有继续给出周六上午或下午二选一。",
+            script: "建议补一句：我帮您先预留周六 10:30 或 14:00 两个试驾位，您看哪个时间更方便？"
+          },
+          {
+            customer: "客户 B9021", advisor: "周莉", time: "2026-06-16 15:20", tag: "报价到店承接", risk: "中",
+            summary: "电话中过早给出价格区间，但没有把报价权益与到店试算绑定。",
+            evidence: "顾问直接说明大概优惠，客户追问最低价后通话结束。",
+            script: "建议改为：店内可以按您的置换和金融方案现场核算，差异会比较大，我帮您约一个 20 分钟试算。"
+          },
+          {
+            customer: "客户 C5580", advisor: "王磊", time: "2026-06-15 18:05", tag: "竞品比较转化", risk: "中",
+            summary: "客户提到正在看竞品，顾问没有追问对比维度，也没有引导实车体验。",
+            evidence: "客户说也在看比亚迪，顾问只回复可以对比看看。",
+            script: "建议追问：您主要比较续航、空间还是智能化？这三项我们到店 15 分钟能直接体验出差异。"
+          },
+          {
+            customer: "客户 D7716", advisor: "陈明", time: "2026-06-14 11:33", tag: "到店理由构建", risk: "高",
+            summary: "客户有换购需求，但电话没有把评估、补贴、金融方案打包成到店理由。",
+            evidence: "客户说旧车想置换，顾问仅介绍车型配置，没有安排旧车估价。",
+            script: "建议补充：您开旧车过来我们同步做估价和置换补贴测算，当天就能看到总成本。"
+          }
+        ]
+      },
+      drive: {
+        name: "试驾接待",
+        tags: [
+          {
+            label: "顾虑承接", count: 15, percent: 44,
+            children: [
+              { label: "价格太贵顾虑", count: 4 },
+              { label: "舒适体验顾虑", count: 4 },
+              { label: "新车/保值顾虑", count: 3 },
+              { label: "空间尺寸顾虑", count: 2 },
+              { label: "竞品引发顾虑", count: 2 }
+            ]
+          },
+          {
+            label: "竞品攻防", count: 11, percent: 32,
+            children: [
+              { label: "续航/电池对比", count: 3 },
+              { label: "价格对比", count: 3 },
+              { label: "配置对比", count: 2 },
+              { label: "空间对比", count: 2 },
+              { label: "动力/操控对比", count: 1 }
+            ]
+          },
+          {
+            label: "版本推荐", count: 8, percent: 24,
+            children: [
+              { label: "直接问版本差异", count: 3 },
+              { label: "主动表达预算", count: 2 },
+              { label: "问配置差异", count: 2 },
+              { label: "问续航差异", count: 1 }
+            ]
+          }
+        ],
+        advisors: [
+          { name: "王磊", count: 11, risk: "高" },
+          { name: "李娜", count: 8, risk: "中" },
+          { name: "陈明", count: 7, risk: "中" },
+          { name: "周莉", count: 5, risk: "低" }
+        ],
+        records: [
+          {
+            customer: "客户 E2077", advisor: "王磊", time: "2026-06-17 14:18", tag: "顾虑承接", risk: "高",
+            summary: "客户试驾后反馈刹车脚感不适应，顾问没有解释动能回收和驾驶模式差异。",
+            evidence: "客户说刹车有点冲，顾问回复开一开就习惯了。",
+            script: "建议现场切换舒适模式再试一段，并解释能量回收强度可调，降低客户的不确定感。"
+          },
+          {
+            customer: "客户 F6892", advisor: "李娜", time: "2026-06-16 16:50", tag: "版本推荐", risk: "中",
+            summary: "客户关注家用空间和预算，但顾问没有把版本差异转成明确推荐。",
+            evidence: "客户问哪个版本适合家用，顾问逐项念配置，没有给建议结论。",
+            script: "建议先给结论：如果以家用和预算为主，推荐中配；安全和舒适配置够用，总价压力更低。"
+          },
+          {
+            customer: "客户 G4305", advisor: "陈明", time: "2026-06-15 13:10", tag: "竞品攻防", risk: "中",
+            summary: "客户对比竞品智能座舱，顾问没有用实际功能演示形成差异。",
+            evidence: "客户提到竞品屏幕更大，顾问只说我们也不差。",
+            script: "建议演示语音连续指令、导航和手机互联，把感知差异从屏幕尺寸转到使用效率。"
+          },
+          {
+            customer: "客户 H1186", advisor: "王磊", time: "2026-06-13 10:25", tag: "顾虑承接", risk: "高",
+            summary: "客户担心电池和保值，顾问缺少质保、用车成本和回购政策承接。",
+            evidence: "客户问电池衰减和二手残值，顾问回答现在都差不多。",
+            script: "建议用三段话承接：质保范围、真实用车成本、门店可提供的置换评估服务。"
+          }
+        ]
+      }
+    };
+
+    const defaultMetricByTab = {
+      ip: "负向邀约占比",
+      drive: "负向试驾接待占比"
+    };
+    const metricFocusTags = {
+      "IP电话接通率": ["到店时间锁定", "到店理由构建"],
+      "30s以下线索占比": ["到店时间锁定", "报价到店承接"],
+      "30分钟外呼率": ["到店时间锁定"],
+      "2天3呼率": ["到店时间锁定", "到店理由构建"],
+      "负向邀约占比": ["到店时间锁定", "到店理由构建", "报价到店承接", "竞品比较转化"],
+      "试驾平均里程": ["顾虑承接"],
+      "平均时长": ["顾虑承接", "版本推荐"],
+      "负向试驾接待占比": ["顾虑承接", "竞品攻防", "版本推荐"]
+    };
+
+    let activeTab = "ip";
+    let activeMetricLabel = defaultMetricByTab.ip;
+    let selectedRowKey = "";
+
+    function trendClasses(trend) {
+      return trend === "down"
+        ? {
+          card: "border-surface-line bg-white",
+          icon: "trending_down",
+          text: "text-danger",
+          badge: "border-red-200 bg-red-50 text-danger"
+        }
+        : {
+          card: "border-surface-line bg-white",
+          icon: "trending_up",
+          text: "text-success",
+          badge: "border-emerald-200 bg-emerald-50 text-success"
+        };
+    }
+
+    function renderFunnel() {
+      const grid = document.getElementById("funnelGrid");
+      const metricMap = Object.fromEntries(funnelMetrics.map((item) => [item.label, item]));
+      const pathItems = [
+        { type: "volume", metric: metricMap["下发线索"] },
+        { type: "rate", metric: metricMap["线索到店率"] },
+        { type: "volume", metric: metricMap["到店"] },
+        { type: "rate", metric: metricMap["到店试驾率"] },
+        { type: "volume", metric: metricMap["试驾"] },
+        { type: "rate", metric: metricMap["试驾订单率"] },
+        { type: "volume", metric: metricMap["订单"] },
+        { type: "rate", metric: metricMap["线索订单率"] }
+      ];
+      const volumeCard = (item) => `
+        <article class="metric-card rounded-lg border border-surface-line bg-white p-3 shadow-sm">
+          <div class="flex items-start justify-between gap-2">
+            <p class="text-sm font-semibold text-text-muted">${item.label}</p>
+            <span class="material-symbols-outlined text-[18px] ${item.trend === "up" ? "trend-up" : "trend-down"}">${item.trend === "up" ? "trending_up" : "trending_down"}</span>
+          </div>
+          <div class="mt-3 flex items-end gap-1">
+            <span class="font-display text-3xl font-bold">${item.value}</span>
+            <span class="pb-1 text-sm font-semibold text-text-muted">${item.unit}</span>
+          </div>
+          <div class="mt-2 text-xs">
+            <span class="font-semibold ${item.trend === "up" ? "trend-up" : "trend-down"}">${item.compare}</span>
+          </div>
+          <div class="mt-2 text-xs font-semibold text-text-muted">排名：${item.rank}</div>
+        </article>
+      `;
+      const rateCard = (item) => `
+        <article class="flex min-h-[116px] flex-col justify-center rounded-lg border border-dashed border-surface-line bg-slate-50 p-3 text-center">
+          <p class="text-sm font-semibold text-text-muted">${item.label}</p>
+          <div class="mt-2 flex items-end justify-center gap-1">
+            <span class="font-display text-2xl font-bold">${item.value}</span>
+            <span class="pb-0.5 text-xs font-semibold text-text-muted">${item.unit}</span>
+          </div>
+          <div class="mt-2 text-xs">
+            <span class="font-semibold ${item.trend === "up" ? "trend-up" : "trend-down"}">${item.compare}</span>
+          </div>
+        </article>
+      `;
+      grid.innerHTML = `
+        ${pathItems.map((item) => item.type === "volume" ? volumeCard(item.metric) : rateCard(item.metric)).join("")}
+      `;
+    }
+
+    function renderProcessMetrics() {
+      document.getElementById("ipMetrics").innerHTML = processMetricGroups.ip.map((group) => metricGroup(group, "ip")).join("");
+      document.getElementById("driveMetrics").innerHTML = processMetricGroups.drive.map((group) => metricGroup(group, "drive")).join("");
+      document.querySelectorAll("[data-jump]").forEach((button) => {
+        button.addEventListener("click", () => switchMetric(button.dataset.jump, button.dataset.metric, true));
+      });
+      document.querySelectorAll("[data-metric-group]").forEach((group) => {
+        group.addEventListener("click", (event) => {
+          if (event.target.closest("[data-jump]")) return;
+          switchMetric(group.dataset.metricGroup, group.dataset.defaultMetric, true);
+        });
+      });
+      document.querySelectorAll("[data-process-group]").forEach((panel) => {
+        const isIp = panel.dataset.processGroup === "ip";
+        panel.classList.toggle("active-ip", activeTab === "ip" && isIp);
+        panel.classList.toggle("active-drive", activeTab === "drive" && !isIp);
+        if (panel.dataset.bound === "true") return;
+        panel.dataset.bound = "true";
+        panel.addEventListener("click", (event) => {
+          if (event.target.closest("[data-jump]")) return;
+          if (event.target.closest("[data-metric-group]")) return;
+          const type = panel.dataset.processGroup;
+          switchMetric(type, defaultMetricByTab[type], true);
+        });
+      });
+    }
+
+    function metricByLabel(type, label) {
+      return processMetrics[type].find((item) => item.label === label);
+    }
+
+    function metricGroup(group, type) {
+      const isActiveGroup = activeTab === type && group.metrics.includes(activeMetricLabel);
+      const activeStyle = type === "ip"
+        ? "border-primary bg-white shadow-sm"
+        : "border-teal bg-white shadow-sm";
+      const hoverStyle = type === "ip" ? "hover:border-primary" : "hover:border-teal";
+      return `
+        <div data-metric-group="${type}" data-default-metric="${group.defaultMetric}" class="rounded border p-2.5 transition ${hoverStyle} ${isActiveGroup ? activeStyle : "border-surface-line bg-slate-50"}">
+          <div class="mb-2 text-xs font-bold text-text-muted">${group.title}</div>
+          <div class="grid gap-2">
+            ${group.metrics.map((label) => metricButton(metricByLabel(type, label), type)).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function metricButton(item, type) {
+      const trend = trendClasses(item.trend);
+      const isActiveMetric = activeTab === type && activeMetricLabel === item.label;
+      const activeStyle = type === "ip"
+        ? "border-primary bg-white ring-2 ring-primary/20"
+        : "border-teal bg-white ring-2 ring-emerald-200";
+      return `
+        <button data-jump="${type}" data-metric="${item.label}" class="relative rounded border p-3 text-left transition hover:border-primary hover:bg-white ${isActiveMetric ? activeStyle : trend.card}">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-sm font-semibold">${item.label}</span>
+            <span class="material-symbols-outlined text-[18px] ${trend.text}">${trend.icon}</span>
+          </div>
+          <div class="mt-2 flex items-end justify-between gap-2">
+            <span class="font-display text-2xl font-bold">${item.value}</span>
+            <span class="rounded border px-2 py-1 text-xs font-semibold ${trend.badge}">月环比 ${item.mom}</span>
+          </div>
+        </button>
+      `;
+    }
+
+    function formatTrendValue(series, value) {
+      if (series.name.includes("里程")) return `${value.toFixed(1)}km`;
+      if (series.name.includes("时长")) return `${Math.round(value)}min`;
+      return `${value.toFixed(1)}%`;
+    }
+
+    function trendPoint(value, values, index, count, chart, normalize) {
+      const rawMin = normalize ? Math.min(...values) : chart.min;
+      const rawMax = normalize ? Math.max(...values) : chart.max;
+      const rawRange = Math.max(rawMax - rawMin, 1);
+      const scaledValue = normalize ? ((value - rawMin) / rawRange) * 100 : value;
+      const range = Math.max(chart.max - chart.min, 1);
+      const x = chart.left + (index / Math.max(count - 1, 1)) * chart.width;
+      const y = chart.top + chart.height - ((scaledValue - chart.min) / range) * chart.height;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }
+
+    function renderTrendChart(type) {
+      const data = dailyTrendData[type];
+      const allValues = data.series.flatMap((item) => item.values);
+      const rawMin = Math.min(...allValues);
+      const rawMax = Math.max(...allValues);
+      const padding = Math.max((rawMax - rawMin) * 0.12, 1);
+      const chart = {
+        left: 48,
+        top: 18,
+        width: 470,
+        height: 170,
+        min: data.yMin ?? rawMin - padding,
+        max: data.yMax ?? rawMax + padding
+      };
+      const yTicks = [0, 25, 50, 75, 100].filter((value) => value >= chart.min && value <= chart.max);
+      const yAxis = yTicks.map((value) => {
+        const y = chart.top + chart.height - ((value - chart.min) / Math.max(chart.max - chart.min, 1)) * chart.height;
+        return `
+          <line x1="${chart.left}" y1="${y}" x2="${chart.left + chart.width}" y2="${y}" stroke="#d9e2f2" stroke-width="1" />
+          <line x1="${chart.left - 4}" y1="${y}" x2="${chart.left}" y2="${y}" stroke="#8da0ba" stroke-width="1" />
+          <text x="${chart.left - 8}" y="${y + 4}" text-anchor="end" font-size="10.5" fill="#5f6f85">${value}${data.ySuffix || ""}</text>
+        `;
+      }).join("");
+      const axes = `
+        <line x1="${chart.left}" y1="${chart.top}" x2="${chart.left}" y2="${chart.top + chart.height}" stroke="#8da0ba" stroke-width="1.2" />
+        <line x1="${chart.left}" y1="${chart.top + chart.height}" x2="${chart.left + chart.width}" y2="${chart.top + chart.height}" stroke="#8da0ba" stroke-width="1.2" />
+      `;
+      const xLabels = data.days.map((day, index) => {
+        if (![0, 2, 4, 6, data.days.length - 1].includes(index)) return "";
+        const x = chart.left + (index / (data.days.length - 1)) * chart.width;
+        return `
+          <line x1="${x}" y1="${chart.top + chart.height}" x2="${x}" y2="${chart.top + chart.height + 4}" stroke="#8da0ba" stroke-width="1" />
+          <text x="${x}" y="218" text-anchor="middle" font-size="10.5" fill="#5f6f85">${day}</text>
+        `;
+      }).join("");
+      const lines = data.series.map((series) => {
+        const points = series.values.map((value, index) => trendPoint(value, series.values, index, data.days.length, chart, data.normalize)).join(" ");
+        const latest = series.values[series.values.length - 1];
+        const latestPoint = trendPoint(latest, series.values, series.values.length - 1, data.days.length, chart, data.normalize).split(",");
+        return `
+          <polyline points="${points}" fill="none" stroke="${series.color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+          <circle cx="${latestPoint[0]}" cy="${latestPoint[1]}" r="3.2" fill="${series.color}" />
+        `;
+      }).join("");
+
+      document.getElementById("trendPopoverEyebrow").textContent = data.eyebrow;
+      document.getElementById("trendPopoverTitle").textContent = data.title;
+      document.getElementById("trendChart").innerHTML = `
+        <svg viewBox="0 0 548 230" class="h-[230px] w-full" role="img" aria-label="${data.eyebrow}第二层指标日趋势">
+          <rect x="0" y="0" width="548" height="230" fill="transparent"></rect>
+          ${yAxis}
+          ${axes}
+          ${lines}
+          ${xLabels}
+        </svg>
+      `;
+      document.getElementById("trendLegend").innerHTML = data.series.map((series) => {
+        const latest = series.values[series.values.length - 1];
+        return `
+          <span class="inline-flex items-center gap-1.5 font-semibold text-text-muted">
+            <i class="h-2 w-2 rounded-full" style="background:${series.color}"></i>
+            <span>${series.name}</span>
+            <span class="text-text-main">${formatTrendValue(series, latest)}</span>
+          </span>
+        `;
+      }).join("");
+    }
+
+    function openTrendPopover(type, anchor) {
+      const popover = document.getElementById("trendPopover");
+      renderTrendChart(type);
+      popover.classList.remove("hidden");
+      popover.setAttribute("aria-hidden", "false");
+      requestAnimationFrame(() => {
+        const rect = anchor.getBoundingClientRect();
+        const popoverWidth = popover.offsetWidth;
+        const popoverHeight = popover.offsetHeight;
+        const left = Math.min(Math.max(16, rect.right - popoverWidth), window.innerWidth - popoverWidth - 16);
+        let top = rect.bottom + 8;
+        if (top + popoverHeight > window.innerHeight - 16) {
+          top = Math.max(16, rect.top - popoverHeight - 8);
+        }
+        popover.style.left = `${left}px`;
+        popover.style.top = `${top}px`;
+      });
+    }
+
+    function closeTrendPopover() {
+      const popover = document.getElementById("trendPopover");
+      popover.classList.add("hidden");
+      popover.setAttribute("aria-hidden", "true");
+    }
+
+    function renderDiagnosis() {
+      const data = diagnosis[activeTab];
+      const focusTags = metricFocusTags[activeMetricLabel] || data.tags.map((item) => item.label);
+      const activeTheme = activeTab === "ip"
+        ? {
+          name: "邀约技巧",
+          target: "IP 电话门店诊断",
+          color: "primary",
+          border: "border-primary",
+          bg: "bg-primary-soft",
+          text: "text-primary",
+          icon: "call"
+        }
+        : {
+          name: "接待技巧",
+          target: "试驾接待门店诊断",
+          color: "teal",
+          border: "border-teal",
+          bg: "bg-emerald-50",
+          text: "text-teal",
+          icon: "directions_car"
+        };
+
+      document.getElementById("detailTitle").textContent = `${activeTheme.name}下钻：${activeMetricLabel}`;
+      renderSoftConnector(activeTheme);
+
+      document.querySelectorAll("[data-tab]").forEach((button) => {
+        const isActive = button.dataset.tab === activeTab;
+        button.classList.toggle("tab-active", isActive);
+        button.classList.toggle("border-transparent", !isActive);
+        button.classList.toggle("text-text-muted", !isActive);
+      });
+
+      const colors = activeTab === "ip"
+        ? ["#003da6", "#006c4a", "#b45f06", "#b42318"]
+        : ["#006c4a", "#003da6", "#b45f06"];
+      const totalTagCount = data.tags.reduce((sum, item) => sum + item.count, 0);
+      const topTag = data.tags[0];
+      const highRiskAdvisor = data.advisors.find((item) => item.risk === "高") || data.advisors[0];
+
+      document.getElementById("tagSummary").innerHTML = `
+        <span class="rounded bg-slate-100 px-2 py-1 font-semibold text-text-muted">记录 ${data.records.length}</span>
+        <span class="rounded ${activeTheme.bg} px-2 py-1 font-semibold ${activeTheme.text}">TOP ${topTag.label}</span>
+        <span class="rounded bg-red-50 px-2 py-1 font-semibold text-danger">高风险 ${highRiskAdvisor.name}</span>
+      `;
+
+      document.getElementById("tagDistribution").innerHTML = `
+        <div class="space-y-2">
+          ${data.tags.map((item, index) => {
+            const color = colors[index % colors.length];
+            const childMax = Math.max(...item.children.map((child) => child.count));
+            return `
+              <div class="rounded border bg-white p-2.5 ${focusTags.includes(item.label) ? `${activeTheme.border} shadow-sm` : "border-surface-line opacity-60"}">
+                <div class="grid grid-cols-[minmax(110px,1fr)_80px] items-center gap-3">
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 text-sm font-semibold">
+                      <i class="h-2.5 w-2.5 shrink-0 rounded-full" style="background:${color};"></i>
+                      <span class="truncate">${item.label}</span>
+                    </div>
+                    <div class="mt-1 h-2 rounded bg-slate-100">
+                      <div class="h-2 rounded" style="width:${Math.max((item.count / totalTagCount) * 100, 8)}%;background:${color};"></div>
+                    </div>
+                  </div>
+                  <div class="text-right font-mono text-sm font-semibold text-text-muted">${item.count} / ${item.percent}%</div>
+                </div>
+                <div class="mt-2 grid gap-1.5 md:grid-cols-2">
+                  ${item.children.map((child) => `
+                    <div class="rounded bg-slate-50 px-2 py-1.5">
+                      <div class="flex items-center justify-between gap-2 text-xs">
+                        <span class="truncate text-text-main">${child.label}</span>
+                        <span class="shrink-0 font-mono font-semibold text-text-muted">${child.count}</span>
+                      </div>
+                      <div class="mt-1 h-1.5 rounded bg-slate-200">
+                        <div class="h-1.5 rounded" style="width:${Math.max((child.count / childMax) * 100, 10)}%;background:${color};"></div>
+                      </div>
+                    </div>
+                  `).join("")}
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+
+      const maxAdvisorCount = Math.max(...data.advisors.map((item) => item.count));
+      document.getElementById("advisorDistribution").innerHTML = data.advisors.map((item) => {
+        const barWidth = Math.max((item.count / maxAdvisorCount) * 100, 18);
+        const barColor = item.risk === "高" ? "#b42318" : item.risk === "中" ? "#b45f06" : "#006c4a";
+        return `
+        <div class="grid grid-cols-[56px_1fr_58px] items-center gap-2 rounded border border-surface-line bg-white px-2.5 py-2">
+          <div class="truncate text-sm font-semibold">${item.name}</div>
+          <div class="h-[18px] rounded bg-slate-100">
+            <div class="flex h-[18px] items-center justify-end rounded px-2 text-[11px] font-bold text-white" style="width:${barWidth}%;background:${barColor};">${item.count}</div>
+          </div>
+          <div class="text-right">
+            <span class="rounded px-1.5 py-0.5 text-[11px] font-semibold ${item.risk === "高" ? "bg-red-50 text-danger" : item.risk === "中" ? "bg-orange-50 text-warning" : "bg-emerald-50 text-success"}">${item.risk}</span>
+          </div>
+        </div>
+      `;
+      }).join("");
+
+      document.getElementById("recordCount").textContent = `${data.records.length} 条记录`;
+      document.getElementById("detailRows").innerHTML = data.records.map((item, index) => {
+        const rowKey = `${activeTab}-${index}`;
+        return `
+          <tr data-row="${rowKey}" class="cursor-pointer hover:bg-primary-soft">
+            <td class="whitespace-nowrap px-3 py-3 font-semibold">${item.customer}</td>
+            <td class="whitespace-nowrap px-3 py-3">${item.advisor}</td>
+            <td class="whitespace-nowrap px-3 py-3 font-mono text-xs text-text-muted">${item.time}</td>
+            <td class="whitespace-nowrap px-3 py-3"><span class="rounded bg-primary-soft px-2 py-1 text-xs font-semibold text-primary">${item.tag}</span></td>
+            <td class="max-w-[260px] px-3 py-3 text-text-muted">${item.summary}</td>
+            <td class="whitespace-nowrap px-3 py-3"><span class="${item.risk === "高" ? "text-danger" : "text-warning"} font-semibold">${item.risk}</span></td>
+          </tr>
+        `;
+      }).join("");
+
+      document.querySelectorAll("[data-row]").forEach((row) => {
+        row.addEventListener("click", () => {
+          const [, index] = row.dataset.row.split("-");
+          selectedRowKey = row.dataset.row;
+          renderDiagnosis();
+          openDrawer(data.records[Number(index)], data.name);
+        });
+        if (row.dataset.row === selectedRowKey) row.classList.add("row-selected");
+      });
+    }
+
+    function renderSoftConnector(theme) {
+      const stroke = activeTab === "ip" ? "#9dbaff" : "#9ddbc1";
+      const leftStartX = activeTab === "ip" ? 18 : 52;
+      const rightStartX = activeTab === "ip" ? 34 : 68;
+      document.getElementById("softConnector").innerHTML = `
+        <svg viewBox="0 0 100 62" preserveAspectRatio="none" class="h-full w-full" aria-hidden="true">
+          <path d="M ${leftStartX} 4 C ${leftStartX} 34, 14 42, 2 58" stroke="${stroke}"></path>
+          <path d="M ${rightStartX} 4 C ${rightStartX} 34, 70 43, 98 58" stroke="${stroke}"></path>
+        </svg>
+      `;
+    }
+
+    function switchMetric(tab, metricLabel, scroll) {
+      activeTab = tab;
+      activeMetricLabel = metricLabel || defaultMetricByTab[tab];
+      selectedRowKey = "";
+      renderProcessMetrics();
+      renderDiagnosis();
+      if (scroll) {
+        document.getElementById("detailDiagnosis").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+
+    function openDrawer(record, typeName) {
+      document.getElementById("drawerType").textContent = `${typeName}明细`;
+      document.getElementById("drawerTitle").textContent = `${record.customer} 诊断详情`;
+      document.getElementById("drawerCustomer").textContent = record.customer;
+      document.getElementById("drawerAdvisor").textContent = record.advisor;
+      document.getElementById("drawerTime").textContent = record.time;
+      document.getElementById("drawerTag").textContent = record.tag;
+      document.getElementById("drawerSummary").textContent = record.summary;
+      document.getElementById("drawerEvidence").textContent = record.evidence;
+      document.getElementById("drawerScript").textContent = record.script;
+      document.getElementById("drawer").classList.add("open");
+      document.getElementById("drawer").setAttribute("aria-hidden", "false");
+    }
+
+    function closeDrawer() {
+      document.getElementById("drawer").classList.remove("open");
+      document.getElementById("drawer").setAttribute("aria-hidden", "true");
+    }
+
+    document.querySelectorAll("[data-tab]").forEach((button) => {
+      button.addEventListener("click", () => switchMetric(button.dataset.tab, defaultMetricByTab[button.dataset.tab], false));
+    });
+    document.querySelectorAll("[data-trend-more]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const type = button.dataset.trendMore;
+        const popover = document.getElementById("trendPopover");
+        const isOpen = !popover.classList.contains("hidden");
+        const currentType = popover.dataset.type;
+        if (isOpen && currentType === type) {
+          closeTrendPopover();
+          return;
+        }
+        popover.dataset.type = type;
+        openTrendPopover(type, button);
+      });
+    });
+    document.getElementById("closeTrendPopover").addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeTrendPopover();
+    });
+    document.addEventListener("click", (event) => {
+      const popover = document.getElementById("trendPopover");
+      if (popover.classList.contains("hidden")) return;
+      if (popover.contains(event.target)) return;
+      if (event.target.closest("[data-trend-more]")) return;
+      closeTrendPopover();
+    });
+    document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
+    document.getElementById("drawer").addEventListener("click", (event) => {
+      if (event.target.id === "drawer") closeDrawer();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeDrawer();
+        closeTrendPopover();
+      }
+    });
+
+    renderFunnel();
+    renderProcessMetrics();
+    renderDiagnosis();
+  </script>
+</body>
+</html>
