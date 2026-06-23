@@ -1,0 +1,251 @@
+# 单店销售诊断工作台 Codex 沉淀清单与字段口径
+
+## 1. 文档目的
+
+本文档用于明确单店销售诊断工作台中，哪些数据由 Codex 每日诊断任务沉淀到观远表单，哪些数据由数仓数据集提供，哪些展示值由 Super APP 前端在当前权限范围内计算。
+
+核心原则：
+
+```text
+前端算展示公式，不算官方诊断；
+前端算当前权限范围，不算跨组织官方排名。
+```
+
+由于观远存在行权限控制，涉及小区排名、大区分位、跨组织对标的字段，必须由数据层或 Codex 每日任务提前预计算并落表，前端不得基于当前可见门店临时计算官方排名或官方分位。
+
+## 2. 数据供给边界
+
+| 数据对象 | 供给方 | 是否 Codex 表单落表 | 前端使用方式 |
+|---|---|---:|---|
+| 门店诊断结果 | Codex 每日任务 | 是 | 读取官方诊断结论、结果断点、过程原因、优先动作 |
+| 官方排名/分位结果 | 数据层预计算或 Codex 每日任务 | 是 | 读取小区排名、大区分位、跨组织对标结果 |
+| Codex 批次状态 | Codex 每日任务 | 是 | 判断最新成功批次、失败回退、源数据状态 |
+| 门店销售指标数据集 | 观远/数仓 | 否 | 前端读取后计算累计、转化率、环比 |
+| 门店过程指标数据集 | 观远/数仓 | 否 | 前端读取后计算过程指标和日趋势 |
+| IP 打标明细数据集 | 数仓 | 否 | 前端读取标签、证据、命中原因、顾问分布、明细抽屉 |
+| 试驾打标明细数据集 | 数仓 | 否 | 前端读取标签、证据、命中原因、顾问分布、明细抽屉 |
+| 页面结构与指标分组 | 前端静态配置 | 否 | 控制 Tab、指标组、默认聚焦和展示顺序 |
+
+## 3. Codex 输出表单
+
+Codex 每日任务只沉淀 3 类表单：
+
+| 表单 | 粒度 | 用途 |
+|---|---|---|
+| 门店诊断结果表 | 经销商 + 统计月份 + 诊断批次 | 存官方诊断事实 |
+| 官方排名/分位结果表 | 经销商 + 统计周期 + 指标 + 排名范围 + 诊断批次 | 存跨组织预计算结果 |
+| Codex 批次状态表 | 诊断批次 + 任务环节 + 可选经销商 | 存任务运行、失败、补跑和读取状态 |
+
+## 4. 门店诊断结果表
+
+### 4.1 粒度与主键
+
+| 项目 | 口径 |
+|---|---|
+| 表粒度 | 一店一月一批次一行 |
+| 逻辑主键 | `dealer_code + stat_month + diagnosis_batch_id` |
+| 前端读取 | 默认读取当前经销商、当前月份的最新成功批次 |
+| 覆盖策略 | 新批次成功后标记为最新成功批次；失败批次不覆盖上一成功结果 |
+
+### 4.2 字段清单
+
+| 中文字段 | 建议字段名 | 类型 | 必填 | 字段口径 |
+|---|---|---|---:|---|
+| 诊断结果ID | diagnosis_result_id | string | 是 | 诊断结果唯一标识，建议由 `dealer_code + stat_month + diagnosis_batch_id` 生成 |
+| 诊断批次ID | diagnosis_batch_id | string | 是 | Codex 每次运行生成的全链路批次 ID |
+| 统计月份 | stat_month | string | 是 | 诊断归属月份，格式 `YYYY-MM` |
+| 大区编码 | region_code | string | 是 | 门店所属大区编码，来自组织主数据 |
+| 大区名称 | region_name | string | 是 | 门店所属大区名称，前端展示使用 |
+| 小区编码 | district_code | string | 是 | 门店所属小区编码，来自组织主数据 |
+| 小区名称 | district_name | string | 是 | 门店所属小区名称，前端展示使用 |
+| 经销商代码 | dealer_code | string | 是 | 门店唯一编码，也是行权限关键字段 |
+| 经销商名称 | dealer_name | string | 是 | 门店展示名称 |
+| 诊断状态 | diagnosis_status | enum | 是 | `success`、`failed`、`insufficient_sample` |
+| 数据状态 | data_status | enum | 是 | `normal`、`no_diagnosis`、`task_failed`、`source_not_ready`、`low_sample`、`detail_empty`、`no_permission` |
+| 总体诊断结论 | overall_conclusion | text | 是 | AI 诊断总览标题文案，前端只读展示 |
+| 主问题编码 | main_issue_code | string | 是 | 官方主问题编码，后续用于统计和治理 |
+| 主问题名称 | main_issue_name | string | 是 | 官方主问题名称，例如邀约质量不足、接待技巧不足 |
+| 结果断点 | result_breakpoint | text | 是 | 说明销售链路主要断点，例如客户到店不足、线索订单率偏弱 |
+| 过程原因 | process_reason | text | 是 | 说明过程短板，例如邀约质量不足、接待技巧承接不足 |
+| 优先动作 | priority_action | text | 是 | 本批次建议优先动作，例如回访高风险明细、复盘话术 |
+| 门店风险等级 | store_risk_level | enum | 是 | `高`、`中`、`低`，由 Codex 诊断逻辑生成 |
+| 聚焦数据域 | focus_domain | enum | 是 | `funnel`、`ip`、`drive`，用于前端默认聚焦模块 |
+| 聚焦指标编码 | focus_metric_code | string | 是 | 本次诊断重点指标编码，例如 `negative_invitation_rate` |
+| 聚焦指标名称 | focus_metric_name | string | 是 | 本次诊断重点指标名称，例如负向邀约占比 |
+| 高风险明细数 | high_risk_detail_count | integer | 是 | Codex 基于数仓 IP/试驾打标明细统计的高风险记录数 |
+| 高亮指标编码 | highlight_metric_codes | string | 否 | AI 诊断总览中需要高亮展示的指标编码列表，用英文逗号分隔 |
+| 证据摘要 | evidence_summary | text | 否 | 对高风险样本、核心标签和典型证据的摘要 |
+| AI 解释文案 | ai_explanation | text | 否 | 更完整的解释文案；不得改写主问题、断点、原因和优先动作 |
+| 样本量 | sample_count | integer | 是 | 本次诊断纳入的有效样本数，可按 IP 与试驾合并口径输出 |
+| 最小样本阈值 | min_sample_threshold | integer | 是 | 生成可靠诊断所需最小样本量 |
+| 样本不足原因 | low_sample_reason | text | 否 | 当 `diagnosis_status = insufficient_sample` 时填写 |
+| 诊断模型版本 | diagnosis_model_version | string | 是 | 生成门店诊断结果使用的模型版本 |
+| 诊断 Prompt 版本 | diagnosis_prompt_version | string | 是 | 生成门店诊断结果使用的 Prompt 版本 |
+| 生成时间 | generated_at | datetime | 是 | Codex 生成本行诊断结果的时间 |
+| 是否最新成功批次 | is_latest_success | boolean | 是 | 当前门店月份是否读取本批次作为最新成功结果 |
+| 上一成功批次ID | fallback_batch_id | string | 否 | 当前批次失败时，前端可回退展示的上一成功批次 |
+
+### 4.3 字段口径说明
+
+- `总体诊断结论`、`结果断点`、`过程原因`、`优先动作` 属于官方诊断事实，前端不得临时生成或改写。
+- `高亮指标编码` 只告诉前端哪些指标需要在 AI 诊断总览中高亮；指标数值仍由前端从观远指标数据集中读取并计算。
+- `高风险明细数` 来自数仓已加工 IP/试驾打标明细，Codex 只做门店月度聚合，不重复落事件级明细。
+- `样本不足` 不是页面空态文案，而是诊断链路状态；前端应保留基础指标展示，并提示诊断样本不足。
+
+## 5. 官方排名/分位结果表
+
+### 5.1 粒度与主键
+
+| 项目 | 口径 |
+|---|---|
+| 表粒度 | 一店一周期一指标一排名范围一批次一行 |
+| 逻辑主键 | `dealer_code + period_type + stat_period + metric_code + rank_scope_type + rank_scope_code + diagnosis_batch_id` |
+| 前端读取 | 根据当前门店、月份、指标编码读取官方排名或官方分位 |
+| 重要边界 | 本表只存跨组织预计算结果，不重复沉淀基础指标值 |
+
+### 5.2 字段清单
+
+| 中文字段 | 建议字段名 | 类型 | 必填 | 字段口径 |
+|---|---|---|---:|---|
+| 排名结果ID | rank_result_id | string | 是 | 排名结果唯一标识，由逻辑主键生成 |
+| 诊断批次ID | diagnosis_batch_id | string | 是 | 与诊断结果主表关联 |
+| 统计周期类型 | period_type | enum | 是 | `day`、`month` |
+| 统计日期 | stat_date | date | 否 | 日趋势或日排名使用，月度排名为空 |
+| 统计月份 | stat_month | string | 是 | 月度排名归属月份，格式 `YYYY-MM` |
+| 大区编码 | region_code | string | 是 | 门店所属大区编码 |
+| 大区名称 | region_name | string | 是 | 门店所属大区名称 |
+| 小区编码 | district_code | string | 是 | 门店所属小区编码 |
+| 小区名称 | district_name | string | 是 | 门店所属小区名称 |
+| 经销商代码 | dealer_code | string | 是 | 门店唯一编码，也是行权限关键字段 |
+| 经销商名称 | dealer_name | string | 是 | 门店展示名称 |
+| 指标域 | metric_domain | enum | 是 | `sales_funnel`、`ip_process`、`drive_process` |
+| 指标组 | metric_group | string | 否 | 例如线索质量、勤奋度、邀约技巧、试驾强度 |
+| 指标编码 | metric_code | string | 是 | 稳定指标编码，需与前端指标配置一致 |
+| 指标名称 | metric_name | string | 是 | 指标展示名，例如订单、线索到店率、负向邀约占比 |
+| 排名范围类型 | rank_scope_type | enum | 是 | `district`、`region`、`national`、`custom_peer` |
+| 排名范围编码 | rank_scope_code | string | 是 | 小区、大区、全国或自定义对标组编码 |
+| 排名范围名称 | rank_scope_name | string | 是 | 小区、大区、全国或自定义对标组名称 |
+| 官方排名 | official_rank | integer | 否 | 当前门店在指定范围内的官方排名 |
+| 排名总数 | rank_total | integer | 是 | 参与排名的有效门店数 |
+| 官方分位 | official_percentile | decimal | 否 | 当前门店在指定范围内的官方分位，建议取 0-100 |
+| 排名方向 | rank_direction | enum | 是 | `higher_better`、`lower_better` |
+| 并列处理规则 | tie_break_rule | string | 是 | 默认同值同排名，下一名跳号；如采用其他规则需注明 |
+| 异常门店处理 | excluded_store_rule | string | 是 | 样本不足、停业、无权限、无数据门店是否剔除 |
+| 排名生成时间 | rank_generated_at | datetime | 是 | 排名/分位预计算完成时间 |
+| 数据完整性状态 | data_quality_status | enum | 是 | `normal`、`missing`、`partial`、`low_sample` |
+
+### 5.3 字段口径说明
+
+- 本表解决行权限下的跨组织比较问题。前端只能读取本表结果，不得基于当前可见门店计算官方排名。
+- `官方排名` 用于“第几名”表达；`官方分位` 用于“大区分位、小区分位”等表达。
+- 基础指标值、分子、分母、环比不进入本表，由前端从观远销售指标、过程指标、打标明细数据集读取后计算。
+- 如果某指标只做分位不做排名，`official_rank` 可为空，但 `official_percentile` 必须有值。
+- 如果某指标只做排名不做分位，`official_percentile` 可为空，但 `official_rank` 和 `rank_total` 必须有值。
+
+## 6. Codex 批次状态表
+
+### 6.1 粒度与主键
+
+| 项目 | 口径 |
+|---|---|
+| 表粒度 | 一批次一任务环节一行；如需门店级失败定位，可增加经销商代码 |
+| 逻辑主键 | `diagnosis_batch_id + step_code + dealer_code` |
+| 前端读取 | 判断当前门店月份是否有最新成功结果、是否需要展示失败或回退状态 |
+
+### 6.2 字段清单
+
+| 中文字段 | 建议字段名 | 类型 | 必填 | 字段口径 |
+|---|---|---|---:|---|
+| 批次状态ID | batch_status_id | string | 是 | 批次状态唯一标识 |
+| 诊断批次ID | diagnosis_batch_id | string | 是 | 全链路唯一批次 ID |
+| 运行日期 | run_date | date | 是 | Codex 任务实际运行日期 |
+| 统计月份 | stat_month | string | 是 | 本次任务处理的统计月份，格式 `YYYY-MM` |
+| 触发方式 | trigger_type | enum | 是 | `scheduled`、`manual`、`retry` |
+| 任务范围 | task_scope | string | 是 | 全量、指定大区、指定小区或指定门店 |
+| 经销商代码 | dealer_code | string | 否 | 门店级状态填门店编码；批次总览行可为空 |
+| 任务环节编码 | step_code | enum | 是 | `pull_data`、`diagnose`、`write_form`、`refresh_dataset` |
+| 任务环节名称 | step_name | string | 是 | 任务环节中文名称 |
+| 环节状态 | step_status | enum | 是 | `pending`、`running`、`success`、`failed`、`skipped` |
+| 源数据刷新状态 | source_refresh_status | enum | 否 | `ready`、`not_ready`、`partial`、`unknown` |
+| 源数据刷新时间 | source_refreshed_at | datetime | 否 | 观远源数据集最近刷新完成时间 |
+| 输入行数 | input_row_count | integer | 否 | 当前环节输入记录数 |
+| 输出行数 | output_row_count | integer | 否 | 当前环节输出记录数 |
+| 成功门店数 | success_store_count | integer | 否 | 当前批次或环节成功门店数 |
+| 失败门店数 | failed_store_count | integer | 否 | 当前批次或环节失败门店数 |
+| 目标表单名称 | target_form_name | string | 否 | 写表环节对应观远表单名称 |
+| 写入状态 | write_status | enum | 否 | `insert`、`update`、`upsert`、`failed` |
+| 表单数据集刷新状态 | form_dataset_refresh_status | enum | 否 | `ready`、`not_ready`、`failed`、`unknown` |
+| 表单数据集刷新时间 | form_dataset_refreshed_at | datetime | 否 | 表单数据集可被前端读取的刷新时间 |
+| 上一成功批次ID | last_success_batch_id | string | 否 | 当前批次失败时可回退展示的上一成功批次 |
+| 错误编码 | error_code | string | 否 | 标准错误码 |
+| 错误信息 | error_message | text | 否 | 保留原始错误摘要，便于排障 |
+| 重试次数 | retry_count | integer | 是 | 当前批次或环节已重试次数 |
+| 开始时间 | started_at | datetime | 是 | 环节开始时间 |
+| 结束时间 | ended_at | datetime | 否 | 环节结束时间 |
+| 脚本版本 | script_version | string | 是 | 本地诊断脚本版本 |
+| 诊断模型版本 | diagnosis_model_version | string | 否 | 本批次诊断模型版本 |
+| 诊断 Prompt 版本 | diagnosis_prompt_version | string | 否 | 本批次诊断 Prompt 版本 |
+
+### 6.3 字段口径说明
+
+- 失败批次不覆盖上一成功诊断结果。
+- `last_success_batch_id` 用于前端展示“当前为上一成功批次结果”。
+- `source_refresh_status` 用于区分源数据未刷新和 Codex 任务失败。
+- 当前范围不包含前端点击“重新诊断”实时生成新批次；按钮在本期应理解为刷新读取最新已沉淀结果。
+
+## 7. 非 Codex 表单输入数据
+
+### 7.1 IP 打标明细数据集
+
+IP 打标明细由数仓加工，Codex 和前端均只读取，不重复落表。字段能力至少需要覆盖：
+
+| 字段能力 | 用途 |
+|---|---|
+| 经销商、月份、客户、顾问、线索、通话事件 | 支撑门店筛选、顾问分布和客户明细 |
+| 是否接通、通话时长、首次外呼延迟、2 天外呼次数 | 支撑 IP 电话接通率、30s 以下线索占比、30 分钟外呼率、2 天 3 呼率 |
+| 一级标签、二级标签、是否负向邀约 | 支撑负向邀约占比、标签分布和下钻筛选 |
+| 问题摘要、证据摘录、标签命中原因、建议话术 | 支撑客户证据抽屉 |
+| 风险等级、标签置信度、打标状态、模型版本、Prompt 版本 | 支撑高风险明细、质量复核和批次追溯 |
+
+### 7.2 试驾打标明细数据集
+
+试驾打标明细由数仓加工，Codex 和前端均只读取，不重复落表。字段能力至少需要覆盖：
+
+| 字段能力 | 用途 |
+|---|---|
+| 经销商、月份、客户、顾问、试驾事件 | 支撑门店筛选、顾问分布和客户明细 |
+| 试驾时间、试驾里程、试驾时长、试驾车系/车型 | 支撑试驾平均里程、平均时长和试驾明细 |
+| 一级标签、二级标签、是否负向试驾接待 | 支撑负向试驾接待占比、标签分布和下钻筛选 |
+| 问题摘要、证据摘录、标签命中原因、建议话术 | 支撑客户证据抽屉 |
+| 风险等级、标签置信度、打标状态、模型版本、Prompt 版本 | 支撑高风险明细、质量复核和批次追溯 |
+
+## 8. 前端计算边界
+
+| 页面展示项 | 前端计算输入 | 前端是否可算 | 说明 |
+|---|---|---:|---|
+| 下发线索、到店、试驾、订单 | 门店销售指标数据集 | 是 | 当前门店、当前月份累计 |
+| 线索到店率、到店试驾率、试驾订单率、线索订单率 | 销售指标分子分母 | 是 | 仅代表当前权限范围 |
+| IP 电话接通率、30s 以下线索占比、30 分钟外呼率、2 天 3 呼率 | 门店过程指标或 IP 明细 | 是 | 指标分子分母需在数据口径文档锁定 |
+| 试驾平均里程、平均时长 | 试驾过程指标或试驾明细 | 是 | 异常值剔除规则需在数据口径文档锁定 |
+| 负向邀约占比、负向试驾接待占比 | 数仓打标明细中的负向标记 | 是 | 负向判定由数仓 AI 标签提供，前端只汇总 |
+| 月环比、趋势方向 | 本期值、上期同口径值 | 是 | 上期周期口径需在数据口径文档锁定 |
+| 标签分布、顾问分布 | 数仓打标明细 | 是 | 仅影响第三层明细，不反算官方诊断 |
+| 明细筛选、客户抽屉 | 数仓打标明细 | 是 | 前端只筛选和展示，不改写标签和证据 |
+| 小区排名、大区分位、跨组织对标 | 官方排名/分位结果表 | 否 | 必须读取预计算结果 |
+| 主问题、断点、原因、优先动作 | 门店诊断结果表 | 否 | 必须读取 Codex 沉淀结果 |
+
+## 9. 后续需进入数据口径文档的事项
+
+以下内容不在本清单内最终锁死，需要进入独立数据口径文档逐项定义：
+
+| 事项 | 需要定义的口径 |
+|---|---|
+| 销售漏斗指标 | 下发线索、到店、试驾、订单的来源、去重、过滤、归属周期 |
+| 转化率 | 每个转化率的分子、分母、样本排除和除零处理 |
+| 环比 | 自然月、MTD 同步天数或完整上月的选择 |
+| IP 过程指标 | 接通、30s 以下、30 分钟外呼、2 天 3 呼的起算点和有效样本 |
+| 试驾过程指标 | 试驾里程、试驾时长的来源、异常值和缺失处理 |
+| 负向占比 | 负向标签口径、多标签去重和事件级/标签级汇总规则 |
+| 官方排名/分位 | 排名范围、并列规则、剔除规则、越高越好/越低越好 |
+| 样本不足 | 不同模块的最小样本量、提示文案和是否允许生成诊断 |
+
