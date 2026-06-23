@@ -36,6 +36,12 @@ Codex 每日任务只沉淀 3 类表单：
 | 官方排名/分位结果表 | 经销商 + 统计周期 + 指标 + 排名范围 + 诊断批次 | 存跨组织预计算结果 |
 | Codex 批次状态表 | 诊断批次 + 任务环节 + 可选经销商 | 存任务运行、失败、补跑和读取状态 |
 
+枚举值规则：
+
+- 字段名保留英文，便于脚本、接口和前端稳定引用。
+- 状态、类型、范围、方向等枚举取值统一存中文，便于观远直接统计和前端直接展示。
+- 如后续需要英文编码，可另增编码字段，不替换当前中文枚举展示字段。
+
 ## 4. 门店诊断结果表
 
 ### 4.1 粒度与主键
@@ -60,8 +66,8 @@ Codex 每日任务只沉淀 3 类表单：
 | 小区名称 | district_name | string | 是 | 门店所属小区名称，前端展示使用 |
 | 经销商代码 | dealer_code | string | 是 | 门店唯一编码，也是行权限关键字段 |
 | 经销商名称 | dealer_name | string | 是 | 门店展示名称 |
-| 诊断状态 | diagnosis_status | enum | 是 | `success`、`failed`、`insufficient_sample` |
-| 数据状态 | data_status | enum | 是 | `normal`、`no_diagnosis`、`task_failed`、`source_not_ready`、`low_sample`、`detail_empty`、`no_permission` |
+| 诊断状态 | diagnosis_status | enum | 是 | `成功`、`失败`、`样本不足` |
+| 数据状态 | data_status | enum | 是 | `正常`、`无诊断结果`、`任务失败`、`源数据未就绪`、`样本不足`、`明细为空`、`无权限` |
 | 总体诊断结论 | overall_conclusion | text | 是 | AI 诊断总览标题文案，前端只读展示 |
 | 主问题编码 | main_issue_code | string | 是 | 官方主问题编码，后续用于统计和治理 |
 | 主问题名称 | main_issue_name | string | 是 | 官方主问题名称，例如邀约质量不足、接待技巧不足 |
@@ -69,7 +75,7 @@ Codex 每日任务只沉淀 3 类表单：
 | 过程原因 | process_reason | text | 是 | 说明过程短板，例如邀约质量不足、接待技巧承接不足 |
 | 优先动作 | priority_action | text | 是 | 本批次建议优先动作，例如回访高风险明细、复盘话术 |
 | 门店风险等级 | store_risk_level | enum | 是 | `高`、`中`、`低`，由 Codex 诊断逻辑生成 |
-| 聚焦数据域 | focus_domain | enum | 是 | `funnel`、`ip`、`drive`，用于前端默认聚焦模块 |
+| 聚焦数据域 | focus_domain | enum | 是 | `销售漏斗`、`邀约过程`、`试驾过程`，用于前端默认聚焦模块 |
 | 聚焦指标编码 | focus_metric_code | string | 是 | 本次诊断重点指标编码，例如 `negative_invitation_rate` |
 | 聚焦指标名称 | focus_metric_name | string | 是 | 本次诊断重点指标名称，例如负向邀约占比 |
 | 高风险明细数 | high_risk_detail_count | integer | 是 | Codex 基于数仓 IP/试驾打标明细统计的高风险记录数 |
@@ -78,7 +84,7 @@ Codex 每日任务只沉淀 3 类表单：
 | AI 解释文案 | ai_explanation | text | 否 | 更完整的解释文案；不得改写主问题、断点、原因和优先动作 |
 | 样本量 | sample_count | integer | 是 | 本次诊断纳入的有效样本数，可按 IP 与试驾合并口径输出 |
 | 最小样本阈值 | min_sample_threshold | integer | 是 | 生成可靠诊断所需最小样本量 |
-| 样本不足原因 | low_sample_reason | text | 否 | 当 `diagnosis_status = insufficient_sample` 时填写 |
+| 样本不足原因 | low_sample_reason | text | 否 | 当 `diagnosis_status = 样本不足` 时填写 |
 | 诊断模型版本 | diagnosis_model_version | string | 是 | 生成门店诊断结果使用的模型版本 |
 | 诊断 Prompt 版本 | diagnosis_prompt_version | string | 是 | 生成门店诊断结果使用的 Prompt 版本 |
 | 生成时间 | generated_at | datetime | 是 | Codex 生成本行诊断结果的时间 |
@@ -109,7 +115,7 @@ Codex 每日任务只沉淀 3 类表单：
 |---|---|---|---:|---|
 | 排名结果ID | rank_result_id | string | 是 | 排名结果唯一标识，由逻辑主键生成 |
 | 诊断批次ID | diagnosis_batch_id | string | 是 | 与诊断结果主表关联 |
-| 统计周期类型 | period_type | enum | 是 | `day`、`month` |
+| 统计周期类型 | period_type | enum | 是 | `日`、`月` |
 | 统计日期 | stat_date | date | 否 | 日趋势或日排名使用，月度排名为空 |
 | 统计月份 | stat_month | string | 是 | 月度排名归属月份，格式 `YYYY-MM` |
 | 大区编码 | region_code | string | 是 | 门店所属大区编码 |
@@ -118,21 +124,21 @@ Codex 每日任务只沉淀 3 类表单：
 | 小区名称 | district_name | string | 是 | 门店所属小区名称 |
 | 经销商代码 | dealer_code | string | 是 | 门店唯一编码，也是行权限关键字段 |
 | 经销商名称 | dealer_name | string | 是 | 门店展示名称 |
-| 指标域 | metric_domain | enum | 是 | `sales_funnel`、`ip_process`、`drive_process` |
+| 指标域 | metric_domain | enum | 是 | `销售漏斗`、`邀约过程`、`试驾过程` |
 | 指标组 | metric_group | string | 否 | 例如线索质量、勤奋度、邀约技巧、试驾强度 |
 | 指标编码 | metric_code | string | 是 | 稳定指标编码，需与前端指标配置一致 |
 | 指标名称 | metric_name | string | 是 | 指标展示名，例如订单、线索到店率、负向邀约占比 |
-| 排名范围类型 | rank_scope_type | enum | 是 | `district`、`region`、`national`、`custom_peer` |
+| 排名范围类型 | rank_scope_type | enum | 是 | `小区`、`大区`、`全国`、`自定义对标组` |
 | 排名范围编码 | rank_scope_code | string | 是 | 小区、大区、全国或自定义对标组编码 |
 | 排名范围名称 | rank_scope_name | string | 是 | 小区、大区、全国或自定义对标组名称 |
 | 官方排名 | official_rank | integer | 否 | 当前门店在指定范围内的官方排名 |
 | 排名总数 | rank_total | integer | 是 | 参与排名的有效门店数 |
 | 官方分位 | official_percentile | decimal | 否 | 当前门店在指定范围内的官方分位，建议取 0-100 |
-| 排名方向 | rank_direction | enum | 是 | `higher_better`、`lower_better` |
+| 排名方向 | rank_direction | enum | 是 | `越高越好`、`越低越好` |
 | 并列处理规则 | tie_break_rule | string | 是 | 默认同值同排名，下一名跳号；如采用其他规则需注明 |
 | 异常门店处理 | excluded_store_rule | string | 是 | 样本不足、停业、无权限、无数据门店是否剔除 |
 | 排名生成时间 | rank_generated_at | datetime | 是 | 排名/分位预计算完成时间 |
-| 数据完整性状态 | data_quality_status | enum | 是 | `normal`、`missing`、`partial`、`low_sample` |
+| 数据完整性状态 | data_quality_status | enum | 是 | `正常`、`缺失`、`部分缺失`、`样本不足` |
 
 ### 5.3 字段口径说明
 
@@ -160,21 +166,21 @@ Codex 每日任务只沉淀 3 类表单：
 | 诊断批次ID | diagnosis_batch_id | string | 是 | 全链路唯一批次 ID |
 | 运行日期 | run_date | date | 是 | Codex 任务实际运行日期 |
 | 统计月份 | stat_month | string | 是 | 本次任务处理的统计月份，格式 `YYYY-MM` |
-| 触发方式 | trigger_type | enum | 是 | `scheduled`、`manual`、`retry` |
+| 触发方式 | trigger_type | enum | 是 | `定时触发`、`手动触发`、`补跑` |
 | 任务范围 | task_scope | string | 是 | 全量、指定大区、指定小区或指定门店 |
 | 经销商代码 | dealer_code | string | 否 | 门店级状态填门店编码；批次总览行可为空 |
-| 任务环节编码 | step_code | enum | 是 | `pull_data`、`diagnose`、`write_form`、`refresh_dataset` |
+| 任务环节编码 | step_code | enum | 是 | `拉取数据`、`生成诊断`、`写入表单`、`刷新表单数据集` |
 | 任务环节名称 | step_name | string | 是 | 任务环节中文名称 |
-| 环节状态 | step_status | enum | 是 | `pending`、`running`、`success`、`failed`、`skipped` |
-| 源数据刷新状态 | source_refresh_status | enum | 否 | `ready`、`not_ready`、`partial`、`unknown` |
+| 环节状态 | step_status | enum | 是 | `待执行`、`运行中`、`成功`、`失败`、`跳过` |
+| 源数据刷新状态 | source_refresh_status | enum | 否 | `已就绪`、`未就绪`、`部分就绪`、`未知` |
 | 源数据刷新时间 | source_refreshed_at | datetime | 否 | 观远源数据集最近刷新完成时间 |
 | 输入行数 | input_row_count | integer | 否 | 当前环节输入记录数 |
 | 输出行数 | output_row_count | integer | 否 | 当前环节输出记录数 |
 | 成功门店数 | success_store_count | integer | 否 | 当前批次或环节成功门店数 |
 | 失败门店数 | failed_store_count | integer | 否 | 当前批次或环节失败门店数 |
 | 目标表单名称 | target_form_name | string | 否 | 写表环节对应观远表单名称 |
-| 写入状态 | write_status | enum | 否 | `insert`、`update`、`upsert`、`failed` |
-| 表单数据集刷新状态 | form_dataset_refresh_status | enum | 否 | `ready`、`not_ready`、`failed`、`unknown` |
+| 写入状态 | write_status | enum | 否 | `新增`、`更新`、`插入或更新`、`失败` |
+| 表单数据集刷新状态 | form_dataset_refresh_status | enum | 否 | `已就绪`、`未就绪`、`失败`、`未知` |
 | 表单数据集刷新时间 | form_dataset_refreshed_at | datetime | 否 | 表单数据集可被前端读取的刷新时间 |
 | 上一成功批次ID | last_success_batch_id | string | 否 | 当前批次失败时可回退展示的上一成功批次 |
 | 错误编码 | error_code | string | 否 | 标准错误码 |
@@ -248,4 +254,3 @@ IP 打标明细由数仓加工，Codex 和前端均只读取，不重复落表�
 | 负向占比 | 负向标签口径、多标签去重和事件级/标签级汇总规则 |
 | 官方排名/分位 | 排名范围、并列规则、剔除规则、越高越好/越低越好 |
 | 样本不足 | 不同模块的最小样本量、提示文案和是否允许生成诊断 |
-
