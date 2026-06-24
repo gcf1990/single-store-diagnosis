@@ -380,3 +380,46 @@ python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month 202
 
 - `MQ2051`、`2026-06` 的门店诊断结果已更新为 `未发现显著异常`。
 - 6 月 8 个官方排名/分位结果已更新到批次 `HYBRID_MG_202606_RULEFIX_20260624`。
+
+## 15. 定时任务扩展到 MG 东南大区
+
+调整时间：2026-06-24。
+
+调整内容：
+
+- 一键任务新增 `--region-name` 参数，支持按大区简称模糊匹配自动识别门店范围。
+- `--dealer-codes` 和 `--region-name` 二选一。
+- DCC 话务数据改为按经销商分片读取，避免触发观远 preview 单次 60,000 行上限。
+- `automation-2` 已从单店 `MQ2051` 调整为 MG 品牌东南大区。
+
+定时任务命令：
+
+```bash
+python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month "$END_MONTH" --region-name 东南 --brand-name MG --dcc-limit 50000 --dcc-chunk-size 10 --validate-limit 500 --yes
+```
+
+东南大区单月 dry-run 验证：
+
+| 项目 | 内容 |
+|---|---|
+| 验证月份 | `2026-06` |
+| 诊断批次ID | `HYBRID_MG_202606_20260624170104` |
+| 自动识别门店数 | 84 |
+| 门店诊断结果表 | 84 行 |
+| 官方排名分位结果表 | 672 行 |
+| Codex批次状态表 | 4 行 |
+| 写表方式 | dry-run 当前态 upsert |
+| 删除旧数据 | 0 行 |
+
+dry-run 写表计划摘要：
+
+| 表 | 新增 | 更新 |
+|---|---:|---:|
+| 门店诊断结果表 | 83 | 1 |
+| 官方排名分位结果表 | 664 | 8 |
+| Codex批次状态表 | 4 | 0 |
+
+说明：
+
+- 本次只做东南大区 dry-run，未实际覆盖表单。
+- 明天 08:30 自动任务会按东南大区正式写表。

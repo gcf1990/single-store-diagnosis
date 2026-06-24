@@ -8,6 +8,12 @@
 python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month 2026-06 --dealer-codes MQ2051 --brand-name MG --yes
 ```
 
+按大区运行时使用 `--region-name`，脚本会从销售漏斗源自动识别该大区下的 MG 一网门店：
+
+```bash
+python3 scripts/run_codex_diagnosis_job.py --start-month 2026-06 --end-month 2026-06 --region-name 东南 --brand-name MG --dcc-limit 50000 --dcc-chunk-size 10 --dry-run-write
+```
+
 写表前验证可使用 dry-run：
 
 ```bash
@@ -19,6 +25,7 @@ python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month 202
 - 一键入口固定使用当前已确认的口径参数。
 - 实际写表使用 `--current-state-upsert`，不会先删除旧数据。
 - `--dry-run-write` 只模拟写表，不校验未写入批次的表单可见性。
+- `--dealer-codes` 和 `--region-name` 二选一；区域任务的 DCC 话务数据会按 `--dcc-chunk-size` 分片读取，避免触发观远 preview 单次 60,000 行上限。
 
 ## 1. 全 mock 批次输出
 

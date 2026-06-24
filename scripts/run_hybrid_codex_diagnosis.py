@@ -37,6 +37,7 @@ SALES_DS_NAME = "[华为云][微批][三品牌]新零售门店级每日全量指
 DCC_DS_ID = "fa1bfbd7736f34d1d8633883"
 DRIVE_DS_ID = "c6428f1c9ca204859b553421"
 DRIVE_DS_NAME = "[准实时]试驾明细宽表&ads_sale_mart_trial_dtl_wide_comb_wms"
+DCC_PREVIEW_MAX_LIMIT = 60000
 
 
 @dataclass(frozen=True)
@@ -54,11 +55,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stat-month", help="单个统计月份，格式 YYYY-MM，必须 >= 2026-03")
     parser.add_argument("--start-month", help="统计开始月份，格式 YYYY-MM，必须 >= 2026-03")
     parser.add_argument("--end-month", help="统计结束月份，格式 YYYY-MM，必须 >= start-month")
-    parser.add_argument("--dealer-codes", required=True, help="逗号分隔的真实经销商代码")
+    parser.add_argument("--dealer-codes", help="逗号分隔的真实经销商代码；和 --region-name 二选一")
+    parser.add_argument("--region-name", help="按大区简称模糊匹配自动取一网门店，例如 东南 或 6东南区；和 --dealer-codes 二选一")
     parser.add_argument("--brand-name", required=True, help="品牌名称，例如 MG")
     parser.add_argument("--batch-id", help="默认 HYBRID_<stat_month>_<timestamp>")
     parser.add_argument("--output-dir", default="outputs/hybrid_codex_run", help="输出根目录")
-    parser.add_argument("--dcc-limit", type=int, default=50000, help="DCC 话务 preview 最大读取行数")
+    parser.add_argument("--dcc-limit", type=int, default=50000, help="DCC 话务单次 preview 最大读取行数，观远接口上限 60000")
+    parser.add_argument("--dcc-chunk-size", type=int, default=10, help="区域运行时 DCC 按经销商分片读取的每片门店数")
     parser.add_argument("--allow-dcc-truncated", action="store_true", help="允许 DCC preview 命中读取上限后继续生成")
     parser.add_argument(
         "--confirm-sales-scope",
@@ -165,6 +168,40 @@ GROUP BY `月份`, `大区代码`, `大区简称`, `小区代码`, `小区简称
     return [normalize_sales_row(row) for row in rows]
 
 
+def region_keyword(region_name: str) -> str:
+    keyword = region_name.strip()
+    for text in ("大区", "区域", "区"):
+        keyword = keyword.replace(text, "")
+    return keyword or region_name.strip()
+
+
+def fetch_region_sales(month: str, region_name: str, brand_name: str) -> list[dict[str, Any]]:
+    keyword = region_keyword(region_name)
+    sql = f"""
+SELECT
+  `月份`,
+  `大区代码`,
+  `大区简称`,
+  `小区代码`,
+  `小区简称`,
+  `经销商代码`,
+  `经销商简称`,
+  SUM(`当日下发线索数`) AS assigned_leads,
+  SUM(`当日首触客流数`) AS arrivals,
+  SUM(`当日首触试驾数`) AS test_drives,
+  SUM(`当日订单数（首触）`) AS orders
+FROM `{SALES_DS_NAME}`
+WHERE `月份` = "{month}"
+{brand_filter_sql(brand_name)}
+  AND (`大区简称` = "{region_name}" OR `大区简称` LIKE "%{keyword}%")
+  AND LENGTH(`经销商代码`) = 6
+GROUP BY `月份`, `大区代码`, `大区简称`, `小区代码`, `小区简称`, `经销商代码`, `经销商简称`
+HAVING SUM(`当日下发线索数`) > 0
+""".strip()
+    rows = run_json(["guancli", "ds", "execute-sql", "-inputs", SALES_DS_ID, "-sql", sql, "-f", "json"])
+    return [normalize_sales_row(row) for row in rows]
+
+
 def fetch_rank_scope_sales(month: str, district_codes: list[str], brand_name: str) -> list[dict[str, Any]]:
     sql = f"""
 SELECT
@@ -215,27 +252,52 @@ def normalize_sales_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def fetch_dcc_rows(month: str, dealer_codes: list[str], brand_name: str, limit: int) -> list[dict[str, Any]]:
-    return run_json(
-        [
-            "guancli",
-            "ds",
-            "preview",
-            DCC_DS_ID,
-            "--filter",
-            f"下发CRM年月 EQ {month}",
-            "--filter",
-            f"品牌名称 EQ {brand_name}",
-            "--filter",
-            f"经销商代码 IN {','.join(dealer_codes)}",
-            "--columns",
-            "下发CRM年月,大区代码,大区简称,小区代码,小区简称,经销商代码,经销商简称,线索编码,是否工作时段线索（9-18）,工作时段30分钟跟进,是否完成72小时三呼,首次通话时长,72小时总通话时长",
-            "--limit",
-            str(limit),
-            "-f",
-            "json",
-        ]
-    )
+def chunks(values: list[str], size: int) -> list[list[str]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]
+
+
+def fetch_dcc_rows(
+    month: str,
+    dealer_codes: list[str],
+    brand_name: str,
+    limit: int,
+    allow_dcc_truncated: bool,
+    chunk_size: int,
+) -> list[dict[str, Any]]:
+    if limit > DCC_PREVIEW_MAX_LIMIT:
+        raise ValueError(f"--dcc-limit 不能超过观远 preview 上限 {DCC_PREVIEW_MAX_LIMIT}")
+    if chunk_size <= 0:
+        raise ValueError("--dcc-chunk-size 必须大于 0")
+    rows: list[dict[str, Any]] = []
+    for dealer_chunk in chunks(dealer_codes, chunk_size):
+        chunk_rows = run_json(
+            [
+                "guancli",
+                "ds",
+                "preview",
+                DCC_DS_ID,
+                "--filter",
+                f"下发CRM年月 EQ {month}",
+                "--filter",
+                f"品牌名称 EQ {brand_name}",
+                "--filter",
+                f"经销商代码 IN {','.join(dealer_chunk)}",
+                "--columns",
+                "下发CRM年月,大区代码,大区简称,小区代码,小区简称,经销商代码,经销商简称,线索编码,是否工作时段线索（9-18）,工作时段30分钟跟进,是否完成72小时三呼,首次通话时长,72小时总通话时长",
+                "--limit",
+                str(limit),
+                "-f",
+                "json",
+            ]
+        )
+        if len(chunk_rows) >= limit and not allow_dcc_truncated:
+            raise RuntimeError(
+                f"DCC 话务分片读取达到上限 {limit} 行，可能截断。"
+                f"分片经销商={','.join(dealer_chunk)}。"
+                "请减小 --dcc-chunk-size，或确认可接受后添加 --allow-dcc-truncated。"
+            )
+        rows.extend(chunk_rows)
+    return rows
 
 
 def aggregate_dcc(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -481,24 +543,27 @@ def build_outputs(
     brand_name: str,
     dcc_limit: int,
     allow_dcc_truncated: bool,
+    dcc_chunk_size: int,
+    region_name: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, Any]]:
-    selected_sales = fetch_selected_sales(month, dealer_codes, brand_name)
-    found_dealers = {row["经销商代码"] for row in selected_sales}
-    missing_dealers = [dealer_code for dealer_code in dealer_codes if dealer_code not in found_dealers]
-    if missing_dealers:
-        raise RuntimeError(f"销售漏斗真实数据未查到以下经销商：{','.join(missing_dealers)}")
+    if region_name:
+        selected_sales = fetch_region_sales(month, region_name, brand_name)
+        if not selected_sales:
+            raise RuntimeError(f"销售漏斗真实数据未查到大区：{region_name}")
+        dealer_codes = sorted({row["经销商代码"] for row in selected_sales})
+    else:
+        selected_sales = fetch_selected_sales(month, dealer_codes, brand_name)
+        found_dealers = {row["经销商代码"] for row in selected_sales}
+        missing_dealers = [dealer_code for dealer_code in dealer_codes if dealer_code not in found_dealers]
+        if missing_dealers:
+            raise RuntimeError(f"销售漏斗真实数据未查到以下经销商：{','.join(missing_dealers)}")
 
     district_codes = sorted({row["小区编码"] for row in selected_sales if row["小区编码"]})
     rank_scope_sales = fetch_rank_scope_sales(month, district_codes, brand_name)
     rank_rows_all = build_rank_rows(rank_scope_sales, batch_id, generated_at)
     rank_rows = [row for row in rank_rows_all if row["经销商代码"] in set(dealer_codes)]
 
-    dcc_rows = fetch_dcc_rows(month, dealer_codes, brand_name, dcc_limit)
-    if len(dcc_rows) >= dcc_limit and not allow_dcc_truncated:
-        raise RuntimeError(
-            f"DCC 话务读取达到上限 {dcc_limit} 行，可能截断。"
-            "请提高 --dcc-limit，或确认可接受后添加 --allow-dcc-truncated。"
-        )
+    dcc_rows = fetch_dcc_rows(month, dealer_codes, brand_name, dcc_limit, allow_dcc_truncated, dcc_chunk_size)
     dcc_metrics = aggregate_dcc(dcc_rows)
     drive_metrics = fetch_drive_process(month, dealer_codes, brand_name)
 
@@ -641,8 +706,10 @@ def write_source_snapshot(run_dir: Path, source_snapshot: dict[str, Any]) -> Non
 def main() -> None:
     args = parse_args()
     months = month_range(args)
-    dealer_codes = [code.strip() for code in args.dealer_codes.split(",") if code.strip()]
-    if not dealer_codes:
+    if bool(args.dealer_codes) == bool(args.region_name):
+        raise ValueError("--dealer-codes 和 --region-name 必须二选一且只能提供一个")
+    dealer_codes = [code.strip() for code in (args.dealer_codes or "").split(",") if code.strip()]
+    if args.dealer_codes and not dealer_codes:
         raise ValueError("--dealer-codes 至少提供 1 个经销商代码")
     if args.confirm_sales_scope == "all_brand_all_series_all_channel" and args.brand_name:
         raise ValueError("已提供 --brand-name 时，--confirm-sales-scope 应使用 brand_all_series_all_channel")
@@ -676,6 +743,8 @@ def main() -> None:
             args.brand_name,
             args.dcc_limit,
             args.allow_dcc_truncated,
+            args.dcc_chunk_size,
+            args.region_name,
         )
         diagnosis_rows.extend(month_diagnosis_rows)
         rank_rows.extend(month_rank_rows)
@@ -685,6 +754,8 @@ def main() -> None:
         source_snapshot["rank_scope_sales_rows"].extend(month_source_snapshot["rank_scope_sales_rows"])
         source_snapshot["dcc_metrics_by_month"][month] = month_source_snapshot["dcc_metrics"]
         source_snapshot["drive_metrics_by_month"][month] = month_source_snapshot["drive_metrics"]
+        if args.region_name:
+            dealer_codes = sorted(set(dealer_codes) | {row["经销商代码"] for row in month_source_snapshot["sales_rows"]})
         input_row_count += (
             len(month_source_snapshot["sales_rows"])
             + len(month_source_snapshot["rank_scope_sales_rows"])
@@ -726,6 +797,7 @@ def main() -> None:
         "run_dir": str(run_dir),
         "input_mode": "真实销售漏斗+真实DCC话务+真实试驾过程+mock打标明细",
         "dealer_codes": dealer_codes,
+        "region_name": args.region_name or "",
         "confirmed_assumptions": {
             "sales_scope": args.confirm_sales_scope,
             "dcc_dedup": args.confirm_dcc_dedup,
