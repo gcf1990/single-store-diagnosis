@@ -3,3 +3,9 @@
 ~$*
 outputs/
 __pycache__/
+node_modules/
+dist/
+dist.*.zip
+.vite/
+.superpowers/
+*.zip

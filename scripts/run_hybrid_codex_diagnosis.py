@@ -9,7 +9,7 @@ import json
 import subprocess
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +55,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stat-month", help="单个统计月份，格式 YYYY-MM，必须 >= 2026-03")
     parser.add_argument("--start-month", help="统计开始月份，格式 YYYY-MM，必须 >= 2026-03")
     parser.add_argument("--end-month", help="统计结束月份，格式 YYYY-MM，必须 >= start-month")
-    parser.add_argument("--dealer-codes", help="逗号分隔的真实经销商代码；和 --region-name 二选一")
-    parser.add_argument("--region-name", help="按大区简称模糊匹配自动取一网门店，例如 东南 或 6东南区；和 --dealer-codes 二选一")
+    parser.add_argument("--end-date", help="统计截止日期，格式 YYYY-MM-DD；包含该日期，不包含之后数据")
+    parser.add_argument("--dealer-codes", help="逗号分隔的真实经销商代码；和 --region-name / --all-brand 三选一")
+    parser.add_argument("--region-name", help="按大区简称模糊匹配自动取一网门店，例如 东南 或 6东南区；和 --dealer-codes / --all-brand 三选一")
+    parser.add_argument("--all-brand", action="store_true", help="按品牌自动取全部一网门店；和 --dealer-codes / --region-name 三选一")
     parser.add_argument("--brand-name", required=True, help="品牌名称，例如 MG")
     parser.add_argument("--batch-id", help="默认 HYBRID_<stat_month>_<timestamp>")
     parser.add_argument("--output-dir", default="outputs/hybrid_codex_run", help="输出根目录")
@@ -118,6 +120,49 @@ def month_range(args: argparse.Namespace) -> list[str]:
     return months
 
 
+def parse_date(value: str) -> date:
+    return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def end_date_for_args(args: argparse.Namespace) -> date | None:
+    if not args.end_date:
+        return None
+    cutoff = parse_date(args.end_date)
+    cutoff_month = cutoff.strftime("%Y-%m")
+    if cutoff_month < MIN_MONTH:
+        raise ValueError(f"--end-date 必须为 {MIN_MONTH}-01 及之后，当前为 {args.end_date}")
+    if args.end_month and args.end_month != cutoff_month:
+        raise ValueError("--end-date 所在月份必须等于 --end-month")
+    if args.stat_month and args.stat_month != cutoff_month:
+        raise ValueError("--stat-month 模式下，--end-date 所在月份必须等于 --stat-month")
+    return cutoff
+
+
+def sales_end_date_filter(month: str, cutoff: date | None) -> str:
+    if cutoff and month == cutoff.strftime("%Y-%m"):
+        return f'  AND `日期` <= "{cutoff:%Y-%m-%d}"'
+    return ""
+
+
+def dcc_end_date_filter(month: str, cutoff: date | None) -> list[str]:
+    if cutoff and month == cutoff.strftime("%Y-%m"):
+        return ["--filter", f"日期-门店看板 LE {cutoff:%Y-%m-%d}"]
+    return []
+
+
+def drive_upper_bound(month: str, cutoff: date | None) -> str:
+    year, month_num = month.split("-")
+    next_month_num = int(month_num) + 1
+    next_year = int(year)
+    if next_month_num == 13:
+        next_month_num = 1
+        next_year += 1
+    next_month = date(next_year, next_month_num, 1)
+    if cutoff and month == cutoff.strftime("%Y-%m"):
+        return f"{cutoff + timedelta(days=1):%Y-%m-%d}"
+    return f"{next_month:%Y-%m-%d}"
+
+
 def run_json(command: list[str]) -> list[dict[str, Any]]:
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
@@ -144,7 +189,7 @@ def brand_filter_sql(brand_name: str) -> str:
     return f'  AND `品牌名称` = "{brand_name}"'
 
 
-def fetch_selected_sales(month: str, dealer_codes: list[str], brand_name: str) -> list[dict[str, Any]]:
+def fetch_selected_sales(month: str, dealer_codes: list[str], brand_name: str, cutoff: date | None) -> list[dict[str, Any]]:
     sql = f"""
 SELECT
   `月份`,
@@ -161,6 +206,7 @@ SELECT
 FROM `{SALES_DS_NAME}`
 WHERE `月份` = "{month}"
 {brand_filter_sql(brand_name)}
+{sales_end_date_filter(month, cutoff)}
   AND `经销商代码` IN ({quote_list(dealer_codes)})
 GROUP BY `月份`, `大区代码`, `大区简称`, `小区代码`, `小区简称`, `经销商代码`, `经销商简称`
 """.strip()
@@ -175,7 +221,7 @@ def region_keyword(region_name: str) -> str:
     return keyword or region_name.strip()
 
 
-def fetch_region_sales(month: str, region_name: str, brand_name: str) -> list[dict[str, Any]]:
+def fetch_region_sales(month: str, region_name: str, brand_name: str, cutoff: date | None) -> list[dict[str, Any]]:
     keyword = region_keyword(region_name)
     sql = f"""
 SELECT
@@ -193,6 +239,7 @@ SELECT
 FROM `{SALES_DS_NAME}`
 WHERE `月份` = "{month}"
 {brand_filter_sql(brand_name)}
+{sales_end_date_filter(month, cutoff)}
   AND (`大区简称` = "{region_name}" OR `大区简称` LIKE "%{keyword}%")
   AND LENGTH(`经销商代码`) = 6
 GROUP BY `月份`, `大区代码`, `大区简称`, `小区代码`, `小区简称`, `经销商代码`, `经销商简称`
@@ -202,7 +249,24 @@ HAVING SUM(`当日下发线索数`) > 0
     return [normalize_sales_row(row) for row in rows]
 
 
-def fetch_rank_scope_sales(month: str, district_codes: list[str], brand_name: str) -> list[dict[str, Any]]:
+def fetch_brand_region_names(month: str, brand_name: str, cutoff: date | None) -> list[str]:
+    sql = f"""
+SELECT
+  `大区简称`,
+  COUNT(DISTINCT `经销商代码`) AS dealer_count
+FROM `{SALES_DS_NAME}`
+WHERE `月份` = "{month}"
+{brand_filter_sql(brand_name)}
+{sales_end_date_filter(month, cutoff)}
+  AND LENGTH(`经销商代码`) = 6
+GROUP BY `大区简称`
+HAVING COUNT(DISTINCT `经销商代码`) > 0
+""".strip()
+    rows = run_json(["guancli", "ds", "execute-sql", "-inputs", SALES_DS_ID, "-sql", sql, "-f", "json"])
+    return [str(row.get("大区简称", "")) for row in rows]
+
+
+def fetch_region_exact_sales(month: str, region_name: str, brand_name: str, cutoff: date | None) -> list[dict[str, Any]]:
     sql = f"""
 SELECT
   `月份`,
@@ -219,6 +283,41 @@ SELECT
 FROM `{SALES_DS_NAME}`
 WHERE `月份` = "{month}"
 {brand_filter_sql(brand_name)}
+{sales_end_date_filter(month, cutoff)}
+  AND `大区简称` = "{region_name}"
+  AND LENGTH(`经销商代码`) = 6
+GROUP BY `月份`, `大区代码`, `大区简称`, `小区代码`, `小区简称`, `经销商代码`, `经销商简称`
+HAVING SUM(`当日下发线索数`) > 0
+""".strip()
+    rows = run_json(["guancli", "ds", "execute-sql", "-inputs", SALES_DS_ID, "-sql", sql, "-f", "json"])
+    return [normalize_sales_row(row) for row in rows]
+
+
+def fetch_brand_sales(month: str, brand_name: str, cutoff: date | None) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for region_name in fetch_brand_region_names(month, brand_name, cutoff):
+        rows.extend(fetch_region_exact_sales(month, region_name, brand_name, cutoff))
+    return rows
+
+
+def fetch_rank_scope_sales(month: str, district_codes: list[str], brand_name: str, cutoff: date | None) -> list[dict[str, Any]]:
+    sql = f"""
+SELECT
+  `月份`,
+  `大区代码`,
+  `大区简称`,
+  `小区代码`,
+  `小区简称`,
+  `经销商代码`,
+  `经销商简称`,
+  SUM(`当日下发线索数`) AS assigned_leads,
+  SUM(`当日首触客流数`) AS arrivals,
+  SUM(`当日首触试驾数`) AS test_drives,
+  SUM(`当日订单数（首触）`) AS orders
+FROM `{SALES_DS_NAME}`
+WHERE `月份` = "{month}"
+{brand_filter_sql(brand_name)}
+{sales_end_date_filter(month, cutoff)}
   AND `小区代码` IN ({quote_list(district_codes)})
   AND LENGTH(`经销商代码`) = 6
 GROUP BY `月份`, `大区代码`, `大区简称`, `小区代码`, `小区简称`, `经销商代码`, `经销商简称`
@@ -263,6 +362,7 @@ def fetch_dcc_rows(
     limit: int,
     allow_dcc_truncated: bool,
     chunk_size: int,
+    cutoff: date | None,
 ) -> list[dict[str, Any]]:
     if limit > DCC_PREVIEW_MAX_LIMIT:
         raise ValueError(f"--dcc-limit 不能超过观远 preview 上限 {DCC_PREVIEW_MAX_LIMIT}")
@@ -270,26 +370,26 @@ def fetch_dcc_rows(
         raise ValueError("--dcc-chunk-size 必须大于 0")
     rows: list[dict[str, Any]] = []
     for dealer_chunk in chunks(dealer_codes, chunk_size):
-        chunk_rows = run_json(
-            [
-                "guancli",
-                "ds",
-                "preview",
-                DCC_DS_ID,
-                "--filter",
-                f"下发CRM年月 EQ {month}",
-                "--filter",
-                f"品牌名称 EQ {brand_name}",
-                "--filter",
-                f"经销商代码 IN {','.join(dealer_chunk)}",
-                "--columns",
-                "下发CRM年月,大区代码,大区简称,小区代码,小区简称,经销商代码,经销商简称,线索编码,是否工作时段线索（9-18）,工作时段30分钟跟进,是否完成72小时三呼,首次通话时长,72小时总通话时长",
-                "--limit",
-                str(limit),
-                "-f",
-                "json",
-            ]
-        )
+        command = [
+            "guancli",
+            "ds",
+            "preview",
+            DCC_DS_ID,
+            "--filter",
+            f"下发CRM年月 EQ {month}",
+            "--filter",
+            f"品牌名称 EQ {brand_name}",
+            "--filter",
+            f"经销商代码 IN {','.join(dealer_chunk)}",
+            "--columns",
+            "下发CRM年月,大区代码,大区简称,小区代码,小区简称,经销商代码,经销商简称,线索编码,是否工作时段线索（9-18）,工作时段30分钟跟进,是否完成72小时三呼,首次通话时长,72小时总通话时长",
+            "--limit",
+            str(limit),
+            "-f",
+            "json",
+        ]
+        command.extend(dcc_end_date_filter(month, cutoff))
+        chunk_rows = run_json(command)
         if len(chunk_rows) >= limit and not allow_dcc_truncated:
             raise RuntimeError(
                 f"DCC 话务分片读取达到上限 {limit} 行，可能截断。"
@@ -341,15 +441,9 @@ def aggregate_dcc(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     }
 
 
-def fetch_drive_process(month: str, dealer_codes: list[str], brand_name: str) -> dict[str, dict[str, Any]]:
+def fetch_drive_process(month: str, dealer_codes: list[str], brand_name: str, cutoff: date | None) -> dict[str, dict[str, Any]]:
     month_start = f"{month}-01"
-    year, month_num = month.split("-")
-    next_month_num = int(month_num) + 1
-    next_year = int(year)
-    if next_month_num == 13:
-        next_month_num = 1
-        next_year += 1
-    next_month = f"{next_year:04d}-{next_month_num:02d}-01"
+    upper_bound = drive_upper_bound(month, cutoff)
     sql = f"""
 SELECT
   DATE_FORMAT(`试驾接待日期`, "%Y-%m") AS month,
@@ -360,7 +454,7 @@ SELECT
   SUM(`试驾时长(分钟)`) AS duration_sum
 FROM `{DRIVE_DS_NAME}`
 WHERE `试驾接待日期` >= "{month_start}"
-  AND `试驾接待日期` < "{next_month}"
+  AND `试驾接待日期` < "{upper_bound}"
   AND `品牌名称` = "{brand_name}"
   AND `是否成功试驾` = "是"
   AND `试驾接待经销商代码` IN ({quote_list(dealer_codes)})
@@ -545,27 +639,34 @@ def build_outputs(
     allow_dcc_truncated: bool,
     dcc_chunk_size: int,
     region_name: str | None = None,
+    all_brand: bool = False,
+    cutoff: date | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, Any]]:
-    if region_name:
-        selected_sales = fetch_region_sales(month, region_name, brand_name)
+    if all_brand:
+        selected_sales = fetch_brand_sales(month, brand_name, cutoff)
+        if not selected_sales:
+            raise RuntimeError(f"销售漏斗真实数据未查到品牌：{brand_name}")
+        dealer_codes = sorted({row["经销商代码"] for row in selected_sales})
+    elif region_name:
+        selected_sales = fetch_region_sales(month, region_name, brand_name, cutoff)
         if not selected_sales:
             raise RuntimeError(f"销售漏斗真实数据未查到大区：{region_name}")
         dealer_codes = sorted({row["经销商代码"] for row in selected_sales})
     else:
-        selected_sales = fetch_selected_sales(month, dealer_codes, brand_name)
+        selected_sales = fetch_selected_sales(month, dealer_codes, brand_name, cutoff)
         found_dealers = {row["经销商代码"] for row in selected_sales}
         missing_dealers = [dealer_code for dealer_code in dealer_codes if dealer_code not in found_dealers]
         if missing_dealers:
             raise RuntimeError(f"销售漏斗真实数据未查到以下经销商：{','.join(missing_dealers)}")
 
     district_codes = sorted({row["小区编码"] for row in selected_sales if row["小区编码"]})
-    rank_scope_sales = fetch_rank_scope_sales(month, district_codes, brand_name)
+    rank_scope_sales = fetch_rank_scope_sales(month, district_codes, brand_name, cutoff)
     rank_rows_all = build_rank_rows(rank_scope_sales, batch_id, generated_at)
     rank_rows = [row for row in rank_rows_all if row["经销商代码"] in set(dealer_codes)]
 
-    dcc_rows = fetch_dcc_rows(month, dealer_codes, brand_name, dcc_limit, allow_dcc_truncated, dcc_chunk_size)
+    dcc_rows = fetch_dcc_rows(month, dealer_codes, brand_name, dcc_limit, allow_dcc_truncated, dcc_chunk_size, cutoff)
     dcc_metrics = aggregate_dcc(dcc_rows)
-    drive_metrics = fetch_drive_process(month, dealer_codes, brand_name)
+    drive_metrics = fetch_drive_process(month, dealer_codes, brand_name, cutoff)
 
     stores = [
         Store(
@@ -706,8 +807,10 @@ def write_source_snapshot(run_dir: Path, source_snapshot: dict[str, Any]) -> Non
 def main() -> None:
     args = parse_args()
     months = month_range(args)
-    if bool(args.dealer_codes) == bool(args.region_name):
-        raise ValueError("--dealer-codes 和 --region-name 必须二选一且只能提供一个")
+    cutoff = end_date_for_args(args)
+    scope_count = sum(bool(value) for value in (args.dealer_codes, args.region_name, args.all_brand))
+    if scope_count != 1:
+        raise ValueError("--dealer-codes、--region-name 和 --all-brand 必须三选一且只能提供一个")
     dealer_codes = [code.strip() for code in (args.dealer_codes or "").split(",") if code.strip()]
     if args.dealer_codes and not dealer_codes:
         raise ValueError("--dealer-codes 至少提供 1 个经销商代码")
@@ -726,6 +829,7 @@ def main() -> None:
     }
     source_snapshot: dict[str, Any] = {
         "months": months,
+        "end_date": f"{cutoff:%Y-%m-%d}" if cutoff else "",
         "brand_name": args.brand_name,
         "dealer_codes": dealer_codes,
         "sales_rows": [],
@@ -745,6 +849,8 @@ def main() -> None:
             args.allow_dcc_truncated,
             args.dcc_chunk_size,
             args.region_name,
+            args.all_brand,
+            cutoff,
         )
         diagnosis_rows.extend(month_diagnosis_rows)
         rank_rows.extend(month_rank_rows)
@@ -754,7 +860,7 @@ def main() -> None:
         source_snapshot["rank_scope_sales_rows"].extend(month_source_snapshot["rank_scope_sales_rows"])
         source_snapshot["dcc_metrics_by_month"][month] = month_source_snapshot["dcc_metrics"]
         source_snapshot["drive_metrics_by_month"][month] = month_source_snapshot["drive_metrics"]
-        if args.region_name:
+        if args.region_name or args.all_brand:
             dealer_codes = sorted(set(dealer_codes) | {row["经销商代码"] for row in month_source_snapshot["sales_rows"]})
         input_row_count += (
             len(month_source_snapshot["sales_rows"])
@@ -792,12 +898,14 @@ def main() -> None:
     manifest = {
         "batch_id": batch_id,
         "stat_months": months,
+        "end_date": f"{cutoff:%Y-%m-%d}" if cutoff else "",
         "brand_name": args.brand_name,
         "generated_at": now,
         "run_dir": str(run_dir),
         "input_mode": "真实销售漏斗+真实DCC话务+真实试驾过程+mock打标明细",
         "dealer_codes": dealer_codes,
         "region_name": args.region_name or "",
+        "all_brand": args.all_brand,
         "confirmed_assumptions": {
             "sales_scope": args.confirm_sales_scope,
             "dcc_dedup": args.confirm_dcc_dedup,

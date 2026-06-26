@@ -5,24 +5,27 @@
 正式联调优先使用一键入口，串联真实指标取数、HYBRID 输出生成、当前态 upsert 写表和表单层反查：
 
 ```bash
-python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month 2026-06 --dealer-codes MQ2051 --brand-name MG --yes
+END_DATE=$(date -v-1d +%Y-%m-%d)
+END_MONTH=${END_DATE%-*}
+python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month "$END_MONTH" --end-date "$END_DATE" --dealer-codes MQ2051 --brand-name MG --yes
 ```
 
 按大区运行时使用 `--region-name`，脚本会从销售漏斗源自动识别该大区下的 MG 一网门店：
 
 ```bash
-python3 scripts/run_codex_diagnosis_job.py --start-month 2026-06 --end-month 2026-06 --region-name 东南 --brand-name MG --dcc-limit 50000 --dcc-chunk-size 10 --dry-run-write
+python3 scripts/run_codex_diagnosis_job.py --start-month 2026-06 --end-month 2026-06 --end-date 2026-06-24 --region-name 东南 --brand-name MG --dcc-limit 50000 --dcc-chunk-size 10 --dry-run-write
 ```
 
 写表前验证可使用 dry-run：
 
 ```bash
-python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month 2026-06 --dealer-codes MQ2051 --brand-name MG --dry-run-write
+python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month "$END_MONTH" --end-date "$END_DATE" --dealer-codes MQ2051 --brand-name MG --dry-run-write
 ```
 
 说明：
 
 - 一键入口固定使用当前已确认的口径参数。
+- 正式定时任务统计范围固定为 `2026-03-01` 至昨天；`--end-date` 包含该日期，不包含今天数据。
 - 实际写表使用 `--current-state-upsert`，不会先删除旧数据。
 - `--dry-run-write` 只模拟写表，不校验未写入批次的表单可见性。
 - `--dealer-codes` 和 `--region-name` 二选一；区域任务的 DCC 话务数据会按 `--dcc-chunk-size` 分片读取，避免触发观远 preview 单次 60,000 行上限。
@@ -56,8 +59,8 @@ outputs/mock_codex_run/<MOCK批次ID>/
 
 ```text
 真实销售漏斗指标
-+ 真实 DCC 话务过程指标
-+ 真实试驾过程指标
++ 真实 DCC 话务指标
++ 真实试驾指标
 + mock IP/试驾打标明细
 -> 三张 Codex 输出表
 ```
@@ -77,6 +80,7 @@ outputs/mock_codex_run/<MOCK批次ID>/
 python3 scripts/run_hybrid_codex_diagnosis.py \
   --start-month 2026-03 \
   --end-month 2026-06 \
+  --end-date 2026-06-24 \
   --dealer-codes MQ2051 \
   --brand-name MG \
   --confirm-sales-scope brand_all_series_all_channel \
@@ -112,7 +116,7 @@ python3 scripts/guancli_form_load.py outputs/hybrid_codex_run/<HYBRID批次ID> -
 - 再按不含批次的当前态主键更新表单现有行。
 - 当前态主键命中则 `form update`，未命中才 `form add`。
 - 不会在写入前删除旧数据，避免新批次失败导致表单为空。
-- 前端只需要按经销商、月份和指标读取当前态数据，不需要筛选批次。
+- 前端只需要按经销商、日期区间和指标读取当前态数据，不需要筛选批次。
 
 安全保护：
 
@@ -183,7 +187,7 @@ python3 scripts/guancli_form_load.py outputs/hybrid_codex_run/<HYBRID批次ID> -
 - mock 批次使用 `诊断批次ID` 前缀 `MOCK_`。
 - 真实指标 + mock 打标批次使用 `诊断批次ID` 前缀 `HYBRID_`。
 - 批次状态表 `触发方式 = Mock测试`。
-- 默认只处理 `2026-03` 及之后自然月。
+- 默认只处理 `2026-03-01` 及之后至昨天的数据，不包含今天；当前月按 `--end-date` 截断。
 - 当前脚本使用本地精确匹配 upsert：读取表单已有记录后在本地按业务主键匹配，避免依赖 `form query --filter` 的过滤结果。
 - 在业务口径未明确前，不执行真实指标批次写表。
 

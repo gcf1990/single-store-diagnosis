@@ -13,8 +13,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start-month", required=True, help="统计开始月份，格式 YYYY-MM")
     parser.add_argument("--end-month", required=True, help="统计结束月份，格式 YYYY-MM")
-    parser.add_argument("--dealer-codes", help="逗号分隔经销商代码；和 --region-name 二选一")
-    parser.add_argument("--region-name", help="按大区简称模糊匹配自动取一网门店，例如 东南 或 6东南区；和 --dealer-codes 二选一")
+    parser.add_argument("--end-date", help="统计截止日期，格式 YYYY-MM-DD；包含该日期，不包含之后数据")
+    parser.add_argument("--dealer-codes", help="逗号分隔经销商代码；和 --region-name / --all-brand 三选一")
+    parser.add_argument("--region-name", help="按大区简称模糊匹配自动取一网门店，例如 东南 或 6东南区；和 --dealer-codes / --all-brand 三选一")
+    parser.add_argument("--all-brand", action="store_true", help="按品牌自动取全部一网门店；和 --dealer-codes / --region-name 三选一")
     parser.add_argument("--brand-name", required=True, help="品牌名称，例如 MG")
     parser.add_argument("--output-dir", default="outputs/hybrid_codex_run", help="输出根目录")
     parser.add_argument("--batch-id", help="可选指定批次ID")
@@ -43,8 +45,9 @@ def main() -> None:
     args = parse_args()
     if not args.dry_run_write and not args.yes:
         raise SystemExit("实际写入表单请添加 --yes；建议先运行 --dry-run-write")
-    if bool(args.dealer_codes) == bool(args.region_name):
-        raise SystemExit("--dealer-codes 和 --region-name 必须二选一且只能提供一个")
+    scope_count = sum(bool(value) for value in (args.dealer_codes, args.region_name, args.all_brand))
+    if scope_count != 1:
+        raise SystemExit("--dealer-codes、--region-name 和 --all-brand 必须三选一且只能提供一个")
 
     generate_command = [
         "python3",
@@ -70,10 +73,14 @@ def main() -> None:
         "--confirm-mock-tags",
         "selected_dealers_only",
     ]
+    if args.end_date:
+        generate_command.extend(["--end-date", args.end_date])
     if args.dealer_codes:
         generate_command.extend(["--dealer-codes", args.dealer_codes])
     if args.region_name:
         generate_command.extend(["--region-name", args.region_name])
+    if args.all_brand:
+        generate_command.append("--all-brand")
     if args.allow_dcc_truncated:
         generate_command.append("--allow-dcc-truncated")
     if args.batch_id:

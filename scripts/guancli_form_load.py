@@ -7,6 +7,7 @@ import argparse
 import csv
 import json
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -80,18 +81,29 @@ def normalize_row(row: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+def run_guancli_write(command: list[str], retries: int = 3) -> None:
+    for attempt in range(1, retries + 1):
+        result = subprocess.run(command)
+        if result.returncode == 0:
+            return
+        if attempt == retries:
+            raise subprocess.CalledProcessError(result.returncode, command)
+        print(f"[retry] guancli write failed attempt={attempt}/{retries}; retrying")
+        time.sleep(attempt * 2)
+
+
 def form_add(fm_id: str, row: dict[str, Any]) -> None:
     payload = json.dumps(row, ensure_ascii=False)
-    subprocess.run(["guancli", "form", "add", fm_id, "--data", payload], check=True)
+    run_guancli_write(["guancli", "form", "add", fm_id, "--data", payload])
 
 
 def form_update(fm_id: str, row_id: str, row: dict[str, Any]) -> None:
     payload = json.dumps(row, ensure_ascii=False)
-    subprocess.run(["guancli", "form", "update", fm_id, row_id, "--data", payload], check=True)
+    run_guancli_write(["guancli", "form", "update", fm_id, row_id, "--data", payload])
 
 
 def form_delete(fm_id: str, row_id: str) -> None:
-    subprocess.run(["guancli", "form", "delete", fm_id, row_id], check=True)
+    run_guancli_write(["guancli", "form", "delete", fm_id, row_id])
 
 
 def query_existing_records(fm_id: str, query_limit: int) -> list[dict[str, Any]]:
@@ -107,15 +119,15 @@ def query_existing_records(fm_id: str, query_limit: int) -> list[dict[str, Any]]
     return json.loads(result.stdout or "[]")
 
 
-def query_existing_index(fm_id: str, key_field: str, query_limit: int) -> dict[str, str]:
+def query_existing_index(fm_id: str, key_field: str, query_limit: int) -> dict[str, dict[str, Any]]:
     # 查询完整行以保留 rowId；--columns 会裁掉 rowId，无法执行 update。
     records = query_existing_records(fm_id, query_limit)
-    index: dict[str, str] = {}
+    index: dict[str, dict[str, Any]] = {}
     for record in records:
         key_value = record.get(key_field)
         row_id = record.get("rowId") or record.get("row_id")
         if key_value and row_id:
-            index[str(key_value)] = str(row_id)
+            index[str(key_value)] = record
     return index
 
 
@@ -133,13 +145,13 @@ def validate_current_keys(table_name: str, rows: list[dict[str, Any]], key_field
             )
 
 
-def query_current_state_index(fm_id: str, key_fields: list[str], query_limit: int) -> dict[str, str]:
+def query_current_state_index(fm_id: str, key_fields: list[str], query_limit: int) -> dict[str, dict[str, Any]]:
     records = query_existing_records(fm_id, query_limit)
-    index: dict[str, str] = {}
+    index: dict[str, dict[str, Any]] = {}
     for record in records:
         row_id = record.get("rowId") or record.get("row_id")
         if row_id:
-            index[current_key_value(record, key_fields)] = str(row_id)
+            index[current_key_value(record, key_fields)] = record
     return index
 
 
@@ -227,10 +239,19 @@ def main() -> None:
             existing = query_existing_index(config["fm_id"], config["key"], args.query_limit)
         add_count = 0
         update_count = 0
+        skip_count = 0
         for row in rows:
             key_value = row.get(config["key"], "")
             lookup_key = current_key_value(row, current_key_fields) if args.current_state_upsert else str(key_value)
-            row_id = existing.get(lookup_key)
+            existing_record = existing.get(lookup_key)
+            row_id = ""
+            if existing_record:
+                row_id = str(existing_record.get("rowId") or existing_record.get("row_id") or "")
+            if existing_record and str(existing_record.get(config["key"], "")) == str(key_value):
+                skip_count += 1
+                key_label = "current_key" if args.current_state_upsert else config["key"]
+                print(f"[skip] {table_name} unchanged {key_label}={lookup_key}" + (f" rowId={row_id}" if row_id else ""))
+                continue
             action = "update" if row_id else "add"
             if args.dry_run:
                 key_label = "current_key" if args.current_state_upsert else config["key"]
@@ -264,6 +285,7 @@ def main() -> None:
                 "deleted_old": deleted_count,
                 "add": add_count,
                 "update": update_count,
+                "skip": skip_count,
             }
         )
     print(json.dumps({"run_dir": str(run_dir), "summary": summary, "dry_run": args.dry_run}, ensure_ascii=False, indent=2))

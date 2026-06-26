@@ -395,8 +395,12 @@ python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month 202
 定时任务命令：
 
 ```bash
-python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month "$END_MONTH" --region-name 东南 --brand-name MG --dcc-limit 50000 --dcc-chunk-size 10 --validate-limit 500 --yes
+END_DATE=$(date -v-1d +%Y-%m-%d)
+END_MONTH=${END_DATE%-*}
+python3 scripts/run_codex_diagnosis_job.py --start-month 2026-03 --end-month "$END_MONTH" --end-date "$END_DATE" --region-name 东南 --brand-name MG --dcc-limit 50000 --dcc-chunk-size 10 --validate-limit 500 --yes
 ```
+
+当前正式定时任务统计范围为 `2026-03-01` 至任务执行日前一天；包含昨天，不包含今天数据。
 
 东南大区单月 dry-run 验证：
 
@@ -423,3 +427,35 @@ dry-run 写表计划摘要：
 
 - 本次只做东南大区 dry-run，未实际覆盖表单。
 - 明天 08:30 自动任务会按东南大区正式写表。
+
+## 16. 182 DCC 话务指标最新覆盖口径
+
+更新时间：2026-06-25。
+
+本节记录后续 Super APP 和 Codex 定时任务应采用的最新 182 口径；第 10 至 15 节保留为历史批次记录，不代表最新口径。
+
+| 项目 | 最新口径 |
+|---|---|
+| 数据集 | `【双品牌】DCC话务指标_182`，dsId `fa1bfbd7736f34d1d8633883` |
+| 日期字段 | `下发CRM时间`，页面开始日期补 `00:00:00`，结束日期补 `23:59:59` |
+| 品牌 | `品牌名称 = MG` |
+| 门店 | 当前页面所选门店，优先用 `经销商代码` |
+| 渠道大类 | `线索渠道大类名称 IN 厂方新媒体, 媒介投放, 官网及电商, 经销商新媒体, 网销平台, 基地, 官方新媒体, MCN` |
+| 开业状态 | `开业状态 = 1` |
+| 数据类型 | `data_type_ch != 来电咨询` |
+| 考核范围 | `线索免考核 = 待考核` |
+| 跟进范围 | `需跟进 = 需跟进` |
+
+指标字段：
+
+| 页面指标 | 182 对齐字段 / 公式 |
+|---|---|
+| 线索接通率 | 对齐看板 `72小时线索外呼接通率`：`count(distinct if(线索下发72小时外呼接通次数 > 0, 线索编码, null)) / count(distinct 线索编码)` |
+| 30分钟外呼率 | 对齐看板 `(10-18)30分钟外呼率`：`工作时段30分钟跟进（10-18） = 是` / `是否工作时段线索（10-18） = 工作时段` |
+| 2天3呼率 | 对齐看板 `2天3呼达标率`：`是否完成72小时三呼 = 是` / 当前口径过滤后线索行数 |
+
+校验样例：
+
+| 门店 | 日期区间 | 线索接通率 | 30分钟外呼率 | 2天3呼率 |
+|---|---|---:|---:|---:|
+| 宁波宁爵 | `2026-06-01` 至 `2026-06-24` | 57.8% | 85.7% | 87.2% |
