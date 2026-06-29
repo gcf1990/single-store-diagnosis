@@ -32,8 +32,8 @@ from run_mock_codex_diagnosis import (
 SCRIPT_VERSION = "hybrid_diagnosis_v0.1"
 MIN_MONTH = "2026-03"
 
-SALES_DS_ID = "gae00de628b274fdf837719d"
-SALES_DS_NAME = "[华为云][微批][三品牌]新零售门店级每日全量指标宽表&ads_sale_mart_new_sale_store_lvl_day_exnorm_comb_wms_his"
+SALES_DS_ID = "k4c14c31c595540a0a771f50"
+SALES_DS_NAME = "[微批][三品牌]新零售门店级每日全量指标宽表&ads_sale_mart_new_sale_store_lvl_day_exnorm_comb_wms_his"
 DCC_DS_ID = "fa1bfbd7736f34d1d8633883"
 DRIVE_DS_ID = "c6428f1c9ca204859b553421"
 DRIVE_DS_NAME = "[准实时]试驾明细宽表&ads_sale_mart_trial_dtl_wide_comb_wms"
@@ -659,9 +659,8 @@ def build_outputs(
         if missing_dealers:
             raise RuntimeError(f"销售漏斗真实数据未查到以下经销商：{','.join(missing_dealers)}")
 
-    district_codes = sorted({row["小区编码"] for row in selected_sales if row["小区编码"]})
-    rank_scope_sales = fetch_rank_scope_sales(month, district_codes, brand_name, cutoff)
-    rank_rows_all = build_rank_rows(rank_scope_sales, batch_id, generated_at)
+    rank_scope_sales = selected_sales if all_brand else fetch_brand_sales(month, brand_name, cutoff)
+    rank_rows_all = build_rank_rows(rank_scope_sales, batch_id, generated_at, include_national=True, brand_name=brand_name)
     rank_rows = [row for row in rank_rows_all if row["经销商代码"] in set(dealer_codes)]
 
     dcc_rows = fetch_dcc_rows(month, dealer_codes, brand_name, dcc_limit, allow_dcc_truncated, dcc_chunk_size, cutoff)

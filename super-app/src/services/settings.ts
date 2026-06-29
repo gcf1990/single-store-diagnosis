@@ -13,7 +13,7 @@ export async function loadAppSettings(): Promise<AppSettings> {
       name: '单店销售诊断工作台',
       title: '单店销售诊断工作台',
       dataMode: 'hybrid',
-      pendingSources: ['ipTaggingDetail', 'testDriveTaggingDetail'],
+      pendingSources: [],
     };
   }
 

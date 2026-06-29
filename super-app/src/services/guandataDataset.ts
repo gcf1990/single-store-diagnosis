@@ -29,6 +29,8 @@ type TaskStatus = {
   result: { response?: { value?: string }; value?: string } | string | null;
 };
 
+const datasetDetailCache = new Map<string, Promise<DatasetDetail>>();
+
 export type DatasetFilterCondition =
   | { field: string; type: 'EQ' | 'NE' | 'IN' | 'GE' | 'LE'; value: string | string[] }
   | { field: string; type: 'BT'; value: [string, string] };
@@ -104,7 +106,14 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 export async function getDatasetDetail(dsId: string): Promise<DatasetDetail> {
-  return getJson<DatasetDetail>(`/api/data-source/${dsId}`);
+  const cached = datasetDetailCache.get(dsId);
+  if (cached) return cached;
+  const request = getJson<DatasetDetail>(`/api/data-source/${dsId}`).catch((error) => {
+    datasetDetailCache.delete(dsId);
+    throw error;
+  });
+  datasetDetailCache.set(dsId, request);
+  return request;
 }
 
 function findField(detail: DatasetDetail, name: string): DatasetField {
