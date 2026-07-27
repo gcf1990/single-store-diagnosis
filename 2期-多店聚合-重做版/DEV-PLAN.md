@@ -1,6 +1,6 @@
 # 2期多店聚合销售诊断工作台 DEV-PLAN
 
-> **当前增量待开发（v1.94，2026-07-27）**：新增 Phase 3AF～3AI / `SCOPE-028 / TASK-020 / FLOW-004 / REQ-014 / AC-326～AC-352`，只做 PC 顶部独立 `MG 07小订战报` 模块。固定小订期为 `2026-07-29`～`2026-08-22`，摘要常驻展示 `小订目标`、`累计小订`、`目标达成`、`时间进度`，第五动态位按层级显示 `落后大区/落后小区/落后门店/自身进度状态`；`小订达成表现` 默认收起，展开状态只保留在 `smallOrderViewState`。目标源来自 `/Users/chengfengguo/Downloads/100家快闪店展车试驾车信息收集0727.xlsx` 的 `经销商目标` Sheet；目标数据集已创建，名称 `MG07小订目标_20260727`，`dsId=h8ae7b66fd5d141ec95bd246`，`parentDirId=r0d6927b9b1d640d7ac3eabb`，状态 `FINISHED`，404 行 / 8 列；运行时配置键 `mg07SmallOrderTargetDsId` 必须填真实 `dsId=h8ae7b66fd5d141ec95bd246`，不能写假 ID、读本地 Excel 或前端硬编码。目标清洗验收为排除 1 行总计空代码后 403 行、403 家唯一 canonical 一级经销商、目标 30001、零目标 17、7 大区，并保留 `MQ856G`、`MQ877K`。组织映射以权威经销商维表 `a310ff90fddff4b6283841c6` 为准，代码优先匹配全量 MG 维表，不局限 valid primary；当前审计事实为 403 家按 valid primary 仅命中 395 家，8 家未命中 valid primary 合计 287（`MQ207J=104`、`MQ257T=45`、`MQ576H=0`、`MQ576K=78`、`MQ877K=44`、`MQ9331=0`、`SQ2547=0`、`SQ2881=16`）。最新修正：`MQ257T` 是 Excel 代码笔误，目标行名称 `溧阳名锐`、目标 45，清洗时必须规范化为权威一级经销商 `MQ256T`，并保留 `原一级经销商代码=MQ257T`、`canonical一级经销商代码=MQ256T`、`代码修正说明=权威维表按经销商简称唯一命中`。实际源固定 `k4c14c31c595540a0a771f50`，过滤 `品牌名称=MG`、`汇报车系名称=MG 07`、固定日期窗口，聚合首触小订、留存、退订；转大定隐藏。配置缺失、权限失败、字段缺失或组织审计失败只降级小订模块，不阻断销售/过程/打铁主链路。当前只更新 `Product-Spec.md`、`Product-Spec-CHANGELOG.md`、`DEV-PLAN.md`，未改源码、未开发、未测试、未发布、未 commit/push。
+> **当前增量已完成本地开发、Code Review 和独立 QA 门禁，未发布（v1.94，2026-07-27）**：新增 Phase 3AF～3AI / `SCOPE-028 / TASK-020 / FLOW-004 / REQ-014 / AC-326～AC-352`，只做 PC 顶部独立 `MG 07小订战报` 模块。固定小订期为 `2026-07-29`～`2026-08-22`，摘要常驻展示 `小订目标`、`累计小订`、`目标达成`、`时间进度`，第五动态位按层级显示 `落后大区/落后小区/落后门店/自身进度状态`；`小订达成表现` 默认收起，展开状态只保留在 `smallOrderViewState`。目标源来自 `/Users/chengfengguo/Downloads/100家快闪店展车试驾车信息收集0727.xlsx` 的 `经销商目标` Sheet；目标数据集已创建，名称 `MG07小订目标_20260727`，`dsId=h8ae7b66fd5d141ec95bd246`，`parentDirId=r0d6927b9b1d640d7ac3eabb`，状态 `FINISHED`，404 行 / 8 列；运行时配置键 `mg07SmallOrderTargetDsId` 必须填真实 `dsId=h8ae7b66fd5d141ec95bd246`，不能写假 ID、读本地 Excel 或前端硬编码。目标清洗验收为排除 1 行总计空代码后 403 行、403 家唯一 canonical 一级经销商、目标 30001、零目标 17、7 大区，并保留 `MQ856G`、`MQ877K`。组织映射以权威经销商维表 `a310ff90fddff4b6283841c6` 为准，代码优先匹配全量 MG 维表，不局限 valid primary；当前审计事实为 403 家按 valid primary 仅命中 395 家，8 家未命中 valid primary 合计 287（`MQ207J=104`、`MQ257T=45`、`MQ576H=0`、`MQ576K=78`、`MQ877K=44`、`MQ9331=0`、`SQ2547=0`、`SQ2881=16`）。最新修正：`MQ257T` 是 Excel 代码笔误，目标行名称 `溧阳名锐`、目标 45，清洗时必须规范化为权威一级经销商 `MQ256T`，并保留 `原一级经销商代码=MQ257T`、`canonical一级经销商代码=MQ256T`、`代码修正说明=权威维表按经销商简称唯一命中`。实际源固定 `k4c14c31c595540a0a771f50`，过滤 `品牌名称=MG`、`汇报车系名称=MG 07`、固定日期窗口，聚合首触小订、留存、退订；转大定隐藏。配置缺失、权限失败、字段缺失或组织审计失败只降级小订模块，不阻断销售/过程/打铁主链路。已完成本地开发、Code Review Stage1/Stage2 PASS 与独立 QA 门禁，P0/P1/P2=`0/0/0`；Node `187/187`、lint `56 files`、build、PC `111/111`、critical audit `0`、source/dist 一致、隐私扫描均通过。尚未发布，尚未完成登录态生产页面验收，目标数据集对 16 个业务用户组的 `READER` 权限同步仍等待用户明确授权；未 commit/push。
 
 > **当前增量待开发（v1.93，2026-07-27）**：新增 Phase 3AE / `REQ-010 / REQ-012 / AC-309～AC-325`，用当前真实车系筛选集合覆盖多店 PC 过程分析与打铁指标的剩余未联动区域。顶部过程 4 卡必须使用选中车系后的销售事实 `state.data` 三阶段值，不得继续读无车系 `processBaselineData`；过程分析 9 项必须继承车系选择，其中销售事实类指标从选中车系销售事实取数，4 项 IP 邀约问题率和 3 项试驾问题率按来源物理字段过滤，过程导出、查看全部经销商过程表现、动态诊断过程数据同样继承。过程来源级合同固定为：`ip.history` 数据流 `mf0b3f3f6a49f476eab32076`、DS `n418e47dacdb94291993d3d9`、字段 `周期首次意向闭环车系名称`，规范值精确过滤，`其他车系`精确；`ip.realtime` DS `ta1978fc86ae745009d0eff4` 同字段，按 raw 映射过滤，`其他车系`为 MG 品牌内补集；`drive.history` 数据流 `i81d40fe25d0042ecae6e59b`、DS `g9da02067b8a6432486f58f9`、字段 `车系名称`，按 raw 映射过滤，`其他车系`为 MG 品牌内补集；`drive.realtime` DS `ie2f283f63154402282c4968` 用规范字段 `闭环车系` 精确过滤，`车系名称`只作审计对照。销售闭集固定为 `MG5、全新MG4、MG7、其他车系、未知车系、MG ES5、MG 4X、Cyberster、MG 07`；空值/null 不算未知或其他，`MG4 EV` 不并入 `全新MG4`。打铁 11 项继续沿用 v1.92 车系联动合同，并修正高意向低水平 source/dist 字段漂移为 `周期最近意向闭环车系`。选中具体车系时任一来源字段、映射、SQL 或完整性不可证必须 fail-closed 为 `数据不完整`，不得回退无车系 preview 明细；全部车系可保留既有 fallback。发布目标仅限生产多店 App `re37c3447cb0443a68a36a40`，单店跳转 URL 固定为 `https://rdata-pv.rauto.com/open-apps/aca59d2e2e60f4be4b8b93ac/`，最终 `settings` 为 `environment=production`；不得发布 `q0844640cf6734877a3193d6`、`x944` 或其他 App。本阶段当前只更新文档，未改源码、未开发、未测试、未发布、未 commit/push。
 
@@ -1038,7 +1038,7 @@ Phase 1~3 PC 已有基线
                                                               ├─> Phase 3AB PC 订单目标切换为打铁最终目标输出（开发中/待复审）
                                                               ├─> Phase 3AD 销售车系筛选真实联动打铁11项（待开发）
                                                               ├─> Phase 3AE 车系筛选联动过程分析与打铁遗留缺口（待开发）
-                                                              ├─> Phase 3AF～3AI MG 07 小订战报（目标配置、组织映射、UI、回归验收，待开发）
+                                                              ├─> Phase 3AF～3AI MG 07 小订战报（本地开发、Review、QA 门禁完成，未发布/未线上终验）
                                                               ├─> Phase 4 共享能力 + 多入口（后续移动端）
                                                               └─> Phase 5 指标 + 主题壳
                                                                     └─> Phase 6 销售卡
@@ -1079,7 +1079,7 @@ Phase 3AD 作为 v1.92 P0 增量待开发：只处理销售车系多选集合对
 
 Phase 3AE 作为 v1.93 P0 增量待开发：只处理多店 PC 车系选择对过程分析、过程导出、动态诊断过程数据和打铁 11 项遗留缺口的真实联动，覆盖旧的过程未联动当前合同。它不覆盖、重排或阻塞 Phase 3AB / 3AD，也不进入 Phase 4~9 移动端计划；不改其他 UI、公式、目标、组织权限、日期默认、排序占比、导出入口、移动端、依赖或发布配置。
 
-Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 07小订战报`，拆为目标配置/数据合同、canonical 组织映射与异常审计、UI 交互与状态隔离、全量回归与发布前验收四段。它不覆盖、重排或阻塞 Phase 3AB / 3AD / 3AE，也不进入 Phase 4~9 移动端计划；不改销售总览、过程分析、打铁指标、负向问题率、门店详情跳转、销售导出、截图协议、移动端、父应用筛选器、依赖或发布配置。
+Phase 3AF～3AI 作为 v1.94 P0 增量已完成本地开发、Code Review 和独立 QA 门禁，未发布：只处理 PC 顶部独立 `MG 07小订战报`，拆为目标配置/数据合同、canonical 组织映射与异常审计、UI 交互与状态隔离、全量回归与发布前验收四段。它不覆盖、重排或阻塞 Phase 3AB / 3AD / 3AE，也不进入 Phase 4~9 移动端计划；不改销售总览、过程分析、打铁指标、负向问题率、门店详情跳转、销售导出、截图协议、移动端、父应用筛选器、依赖或发布配置。尚未完成生产发布、登录态生产页面验收和目标数据集对 16 个业务用户组的 `READER` 权限同步。
 
 ### Phase 3AE：车系筛选联动过程分析与打铁遗留缺口 — 待开发
 
@@ -1104,7 +1104,7 @@ Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 
 
 **停止条件：** 任何来源无法证明字段可查、raw 映射不可审计、`其他车系`必须临时按结果动态切换才有数、`MG4 EV` 需要业务确认才能归并、具体车系 SQL 失败只能靠无车系 preview 才出数、source/dist 字段不一致、QA 不到 `0/0/0`、staging 不干净、`settings` 非 production、或发布目标不是 `re37c3447cb0443a68a36a40`，立即停止并输出差异清单，不发布、不 commit、不 push。
 
-### Phase 3AF：MG 07 小订目标配置与数据合同 — 待开发
+### Phase 3AF：MG 07 小订目标配置与数据合同 — 已完成本地开发与门禁，未发布
 
 **目标：** 落实 `REQ-014 / AC-329～AC-333 / AC-350 / AC-352` 的目标数据合同。把已创建目标数据集 `MG07小订目标_20260727`（`dsId=h8ae7b66fd5d141ec95bd246`）配置读取、权威维表审计和基础 API 边界做成可验证能力；配置缺失、未授权、字段缺失或运行时不可读时只降级小订模块。
 
@@ -1118,14 +1118,16 @@ Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 
 **关键文件：** 计划新增或修改 `multi-store-super-app/small-order-config.js`、`multi-store-super-app/small-order-api.js`、`multi-store-super-app/settings.json`、`multi-store-super-app/runtime-config.js`、`multi-store-super-app/validation/small-order-config.test.mjs`、`multi-store-super-app/validation/small-order-contract.test.mjs`；如需纳入构建复制清单，仅最小修改 `multi-store-super-app/package.json` 或 `multi-store-super-app/vite.config.ts`。不得新增依赖或升级现有依赖。
 
 **四步门禁：**
-1. [ ] **Code Review：** 核查配置键写真实 `dsId=h8ae7b66fd5d141ec95bd246`、无假 `dsId`、无本地 Excel 运行时读取、配置缺失只降级小订模块、目标字段与 QA 数量合同完整。
-2. [ ] **测试完整性：** Node 测试覆盖配置缺失、字段缺失、403/30001 守恒、零目标、非法目标值、8 家 valid primary 异常明细和无权限状态。
-3. [ ] **编译与安全验证：** `(cd multi-store-super-app && npm test && npm run lint && npm run build)` 通过，隐私扫描不得把本地 `/Users/...xlsx` 作为运行时代码依赖。
-4. [ ] **功能验证：** 分别验证真实 `mg07SmallOrderTargetDsId` 可读成功态，以及配置缺失、未授权、字段缺失或运行时不可读时 PC 页面主链路可用、小订模块显示配置缺失/目标不可用状态。
+1. [x] **Code Review：** 已核查配置键写真实 `dsId=h8ae7b66fd5d141ec95bd246`、无假 `dsId`、无本地 Excel 运行时读取、配置缺失只降级小订模块、目标字段与 QA 数量合同完整。
+2. [x] **测试完整性：** Node 测试已覆盖配置缺失、字段缺失、403/30001 守恒、零目标、非法目标值、8 家 valid primary 异常明细和无权限状态。
+3. [x] **编译与安全验证：** Node `187/187`、lint Syntax check `56 files`、build PASS，隐私扫描未发现本地 Excel 作为运行时代码依赖。
+4. [x] **功能验证：** 已验证真实 `mg07SmallOrderTargetDsId` 成功态，以及配置缺失、未授权、字段缺失或运行时不可读时 PC 页面主链路可用、小订模块显示配置缺失/目标不可用状态。
+
+**完成证据：** 真实回放 `404` 行中排除 `1` 行总计空代码，入数 `403` 家；唯一原代码 / canonical 代码均 `403`，目标合计 `30001`、零目标 `17`、覆盖 `7` 区；未写假 ID、未读取本地 Excel、未新增依赖。
 
 **停止条件：** 需要写假目标 `dsId`、读本地 Excel、前端硬编码目标、用旧目标源替代，或目标合同无法证明 403/30001 守恒时停止。
 
-### Phase 3AG：MG 07 小订 canonical 组织映射与异常审计 — 待开发
+### Phase 3AG：MG 07 小订 canonical 组织映射与异常审计 — 已完成本地开发与门禁，未发布
 
 **目标：** 落实 `REQ-014 / AC-332～AC-345 / AC-349`。用权威经销商维表 `a310ff90fddff4b6283841c6` 生成 canonical code、组织归属和权限裁剪，处理 `MQ257T -> MQ256T` 清洗修正，并建立异常审计。
 
@@ -1140,14 +1142,16 @@ Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 
 **关键文件：** 计划新增或修改 `multi-store-super-app/small-order-model.js`、`multi-store-super-app/small-order-api.js`、`multi-store-super-app/organization-scope.js`、`multi-store-super-app/data-api.js`、`multi-store-super-app/filter-api.js`、`multi-store-super-app/validation/small-order-model.test.mjs`、`multi-store-super-app/validation/small-order-date-boundary.test.mjs`、`multi-store-super-app/validation/small-order-contract.test.mjs`。
 
 **四步门禁：**
-1. [ ] **Code Review：** 重点审查 canonical code 生成、`MQ257T -> MQ256T` 审计字段、权限不扩张、目标文本不直接做权限字段、异常 fail-closed。
-2. [ ] **测试完整性：** Node 测试覆盖 8 家异常状态、`MQ257T` 唯一名称映射、0 命中、多命中、零目标有实际、实际无目标、目标无实际、组织失败排除。
-3. [ ] **编译与安全验证：** `(cd multi-store-super-app && npm test && npm run lint && npm run build)` 通过；请求 identity 包含目标 dsId、实际 dsId、固定小订期、截止日期、权限范围和小订下钻路径。
-4. [ ] **数据 QA：** 证明修正后 403 行 / 30001 目标全部可映射；角色权限裁剪后非授权 canonical 门店不进入摘要、列表、下钻或可见审计。
+1. [x] **Code Review：** 已审查 canonical code 生成、`MQ257T -> MQ256T` 审计字段、权限不扩张、目标文本不直接做权限字段、异常 fail-closed。
+2. [x] **测试完整性：** Node 测试已覆盖 8 家异常状态、`MQ257T` 唯一名称映射、0 命中、多命中、零目标有实际、实际无目标、目标无实际、组织失败排除。
+3. [x] **编译与安全验证：** Node `187/187`、lint `56 files`、build PASS；请求 identity 已包含目标 dsId、实际 dsId、固定小订期、截止日期、权限范围和小订下钻路径。
+4. [x] **数据 QA：** 已证明修正后 403 行 / 30001 目标全部可映射、`organization_unmapped=0`；本地角色权限裁剪合同通过，生产 16 个业务用户组 `READER` 同步仍待授权。
+
+**完成证据：** 403 家逐码逐值校验通过；8 家 valid primary 异常合计 `287` 可追溯；`MQ257T -> MQ256T` 按溧阳名锐唯一名称命中，原代码与 canonical 代码保留审计；`395/8/287` 逐码逐值口径已闭环。
 
 **停止条件：** `MQ257T` 被当作未入维表门店、8 家异常被 valid primary 直接排除、目标文本扩大权限、0/多命中仍入数、实际源被替换、转大定被展示或用于达成时停止。
 
-### Phase 3AH：MG 07 小订战报 UI、交互与状态隔离 — 待开发
+### Phase 3AH：MG 07 小订战报 UI、交互与状态隔离 — 已完成本地开发与门禁，未发布
 
 **目标：** 落实 `REQ-014 / AC-326～AC-328 / AC-341～AC-348`。在 PC 顶部实现独立模块、摘要、展开列表、独立下钻和响应式视觉，不污染销售/过程/打铁主状态。
 
@@ -1162,14 +1166,16 @@ Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 
 **关键文件：** 计划新增或修改 `multi-store-super-app/small-order-view.js`、`multi-store-super-app/app.js`、`multi-store-super-app/index.html`、`multi-store-super-app/visual-sync.css`、`multi-store-super-app/components.css`、`multi-store-super-app/visual-base.css`、`multi-store-super-app/visual-responsive.css`、`multi-store-super-app/validation/small-order-app-integration.spec.js`、`multi-store-super-app/validation/small-order-a11y-visual.spec.js`、`multi-store-super-app/validation/pc-role-drilldown.spec.js`。
 
 **四步门禁：**
-1. [ ] **Code Review：** 核查小订 UI 独立状态、展开会话语义、缓存 key、非目标主链路不污染和可访问性。
-2. [ ] **测试完整性：** Playwright 覆盖总部/大区/小区/门店角色入口、展开/收起、独立下钻、请求竞态、四个日期边界、失败五态。
-3. [ ] **编译与安全验证：** `(cd multi-store-super-app && npm test && npm run lint && npm run build && npm run test:pc)` 通过，source/dist 小订相关文件一致。
-4. [ ] **视觉 QA：** 1280/1366/1440 浅色/深色截图通过；摘要、列表、按钮、焦点环无重叠、截断或横向页面溢出。
+1. [x] **Code Review：** 已核查小订 UI 独立状态、展开会话语义、缓存 key、非目标主链路不污染和可访问性。
+2. [x] **测试完整性：** Playwright 已覆盖总部/大区/小区/门店角色入口、展开/收起、独立下钻、请求竞态、四个日期边界、失败五态。
+3. [x] **编译与安全验证：** Node `187/187`、lint `56 files`、build PASS、PC Playwright `111/111`，source/dist 小订相关文件一致。
+4. [x] **视觉 QA：** 1280/1366/1440 浅色/深色截图通过；摘要、列表、按钮、焦点环无重叠、截断或横向页面溢出。
+
+**完成证据：** `smallOrderViewState` 与主 `organization.viewLevel/drillPath/allDealerMode` 隔离；`2026-07-28`、`2026-07-29`、`2026-08-22`、`2026-08-23` 四日期边界通过；非目标销售/过程/打铁/导出/截图/单店跳转回归通过。
 
 **停止条件：** 小订下钻改写主组织状态、展开状态写入 URL 或持久缓存、父日期或车系筛选影响小订固定期、UI 造成主销售区挤压、或需要新增依赖时停止。
 
-### Phase 3AI：MG 07 小订战报全量回归与发布前验收 — 待开发
+### Phase 3AI：MG 07 小订战报全量回归与发布前验收 — 本地门禁完成，未发布/未线上终验
 
 **目标：** 对 `REQ-014 / AC-326～AC-352` 做完整工程门禁、独立 QA 和发布前证据收口。真实目标 `dsId` 已创建，但未完成权限、运行时可读性和认证态 QA 前，不得标记已发布或线上验收通过。
 
@@ -1183,12 +1189,12 @@ Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 
 **关键文件：** `multi-store-super-app/package.json`、`multi-store-super-app/package-lock.json`、`multi-store-super-app/validation/*.mjs`、`multi-store-super-app/validation/*.spec.js`、`multi-store-super-app/dist/` 生成产物；发布前仅允许从干净 staging 构建，不授权本阶段直接发布、commit 或 push。
 
 **四步门禁：**
-1. [ ] **Code Review：** 独立审查 AC-326～AC-352，P0/P1/P2 必须为 `0/0/0`。
-2. [ ] **测试完整性：** `(cd multi-store-super-app && npm test)` 通过，专项小订测试和既有目标/车系/打铁/导出测试均无回归。
-3. [ ] **编译与安全验证：** `(cd multi-store-super-app && npm run lint && npm run build && npm run test:pc && npm audit --omit=dev --audit-level=critical)` 通过，再执行隐私扫描、source/dist 一致、zip 完整性和关键资源校验。
-4. [ ] **业务 QA：** 使用真实 `mg07SmallOrderTargetDsId=h8ae7b66fd5d141ec95bd246`、目标数据集权限和认证态页面完成抽验；同时保留配置缺失、未授权、字段缺失或运行时不可读的安全降级验收，不能用降级态替代业务成功态。
+1. [x] **Code Review：** 独立审查 AC-326～AC-352 已通过，P0/P1/P2=`0/0/0`。
+2. [x] **测试完整性：** `(cd multi-store-super-app && npm test)` 已通过，Node `187/187`；专项小订测试和既有目标/车系/打铁/导出测试无回归。
+3. [x] **编译与安全验证：** lint Syntax check `56 files`、build PASS、PC Playwright `111/111`、critical audit `0`、隐私扫描、source/dist 一致和关键资源校验均通过。
+4. [x] **业务 QA：** 本地真实 `mg07SmallOrderTargetDsId=h8ae7b66fd5d141ec95bd246` 合同、成功态、未授权/字段缺失/运行时不可读安全降级均已验证；生产登录态页面抽验和目标数据集对 16 个业务用户组的 `READER` 权限同步尚未完成，不能用本地结果替代线上终验。
 
-**停止条件：** QA P0/P1/P2 不是 `0/0/0`、真实目标 `dsId` 未按 `h8ae7b66fd5d141ec95bd246` 配置、目标数据集无权限或运行时不可读却声称成功态、任何非目标主链路回归失败、依赖变化、发布目标或 settings 被改动时停止。
+**停止条件：** QA P0/P1/P2 不是 `0/0/0`、真实目标 `dsId` 未按 `h8ae7b66fd5d141ec95bd246` 配置、目标数据集无权限或运行时不可读却声称成功态、任何非目标主链路回归失败、依赖变化、发布目标或 settings 被改动时停止。当前发布前仍需用户明确授权后同步目标数据集 16 个业务用户组 `READER`，并完成登录态生产页面验收。
 
 ## 5. Product-Spec + Design-Brief P0 覆盖矩阵
 
@@ -1220,7 +1226,7 @@ Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 
 | REQ-012 v1.86 / AC-272～AC-281：打铁 DCC 四项门店范围合同，DCC 日期按用户筛选闭区间，范围为官方业务过滤后全部 DCC 门店且不与 `validDealers` 求交，按 DCC 自身组织归属，DCC/非 DCC 安全并集，DCC-only 门店可展示 DCC 四项，父级按自身分子分母重聚合，组织筛选下推，失败 fail-closed，非 DCC 来源和销售/过程/目标/UI/移动端不回归 | 3Z | 已完成本地实现、Review、独立 QA 与测试 App 发布；实现文件 `iron-metrics-api.js`、`iron-metrics-model.js`、`iron-metrics-view.js`、`app.js`、`index.html`，测试 `iron-metrics-query.test.mjs`、`iron-metrics-contract.test.mjs`、`iron-metrics-app-integration.spec.js`。专项 `35/35`、Node `147/147`、PC `99/99`、lint `45 files`、build PASS、audit `0`、隐私 `0`、source/dist `29` 个复制型运行时文件一致；最终 Review `0/0/2`、QA `0/0/0`。北京时间 `2026-07-24 12:54:09 CST` 发布测试 App `q0844640cf6734877a3193d6`，`operation=update`、`version=0.1.0`、无 `fileKey`、zip SHA-256=`37f676a0e50ad7f4d63032da63b680d6df51a21f6fb380bb689a4d4542353ab2`、`143510` bytes、`dist 31 files / 600836 bytes`、`unzip -t` PASS；匿名 HTTP `401` 仅认证边界。未发布生产，未 commit/push，未做登录态线上 UI 验收 |
 | REQ-011 v1.88 / AC-283～AC-290：PC 订单目标切换为打铁最终目标输出，订单源 `u32`、零售源 `r05`，订单按 `u32` 输出行 SUM 且同展示键多行累加，组织代码可空且空代码按 u32 组织名称归属，禁止 `h982` 作为最终订单目标源，`2026-07 / MG` 输入 `1576` 行、7 区订单目标 `1995/5597/1950/2850/2615/5179/2638` 合计 `22824`，12 条空代码目标 `115` 保留，`210` 差额保留，订单/零售源失败隔离，非目标回归 | 3AB | 开发中/待复审；实施必须证明 `r05.总订单目标` 不再参与订单目标，`h982=22614` 只作差异说明，不作 App 验收值。测试需覆盖 `u32` 字段映射、输出行 SUM、同展示键多行累加、空代码名称归属、无法映射实际分子为 0 并计审计、订单/零售源独立失败、车系集合联动、非 MG/跨月/未来月隐藏、UI/导出字段集合/销售过程指标/发布配置不变 |
 | REQ-012 v1.92 / AC-298～AC-308：销售车系筛选真实联动打铁 11 项，6 来源字段为 q00 周期首次意向闭环车系名称、w8 周期最近意向闭环车系、lbfb 车系、c82/hd284 车系名称、DCC fa1 CRM闭环车系名称；销售闭集映射、`未知车系` 原始“未知”、`其他车系` 的来源级静态策略（`q00/w8/lbfb/fa1` 精确过滤，`c82/hd284` MG 补集，不按查询结果切换）、`全新MG4/MG4 EV` 不默认合并、字段/查询不可证 fail-closed、真实无样本 `--`、三阶段同构、非目标回归 | 3AD | 待开发；实施必须证明所有真实车系选项触发当前/月/周三阶段 6 来源真实查询或明确 fail-closed，不得用全部车系结果冒充。关键文件 `iron-metrics-api.js`、`iron-metrics-contract.js`、`iron-metrics-model.js`、`vehicle-series.js`、必要 `app.js`；测试 `iron-metrics-query.test.mjs`、`iron-metrics-contract.test.mjs`、`iron-metrics-app-integration.spec.js`、`vehicle-series.test.mjs`、`vehicle-series-multiselect.test.mjs`。未改源码、未发布、未 commit/push |
-| SCOPE-028 / REQ-014 v1.94 / AC-326～AC-352：PC 独立 `MG 07小订战报`，固定小订期 `2026-07-29～2026-08-22`，目标源经 `mg07SmallOrderTargetDsId=h8ae7b66fd5d141ec95bd246` 注入真实 dsId，目标数据集 `MG07小订目标_20260727` 为 `FINISHED`、404 行 / 8 列，运行时排除 1 行总计空代码后目标 403 行/30001 守恒，权威维表 `a310ff90fddff4b6283841c6` canonical 映射，8 家 valid primary 异常状态审计，`MQ257T -> MQ256T` 清洗修正，实际源 `k4c14c31c595540a0a771f50`，独立 `smallOrderViewState`，异常 `zero_target_actual/unconfigured_actual/organization_unmapped`，权限不扩张，四日期边界和 1280/1366/1440 浅深主题 | 3AF～3AI | 待开发；实施分为目标配置与合同、canonical 组织映射与异常审计、UI/状态隔离、全量回归验收。配置缺失、未授权、字段缺失或运行时不可读时只能验收安全降级，不能标记业务成功态。不得改销售总览、过程分析、打铁指标、导出、截图、移动端、父应用筛选器、依赖或发布配置 |
+| SCOPE-028 / REQ-014 v1.94 / AC-326～AC-352：PC 独立 `MG 07小订战报`，固定小订期 `2026-07-29～2026-08-22`，目标源经 `mg07SmallOrderTargetDsId=h8ae7b66fd5d141ec95bd246` 注入真实 dsId，目标数据集 `MG07小订目标_20260727` 为 `FINISHED`、404 行 / 8 列，运行时排除 1 行总计空代码后目标 403 行/30001 守恒，权威维表 `a310ff90fddff4b6283841c6` canonical 映射，8 家 valid primary 异常状态审计，`MQ257T -> MQ256T` 清洗修正，实际源 `k4c14c31c595540a0a771f50`，独立 `smallOrderViewState`，异常 `zero_target_actual/unconfigured_actual/organization_unmapped`，权限不扩张，四日期边界和 1280/1366/1440 浅深主题 | 3AF～3AI | 已完成本地开发、Code Review Stage1/Stage2 与独立 QA 门禁，P0/P1/P2=`0/0/0`；Node `187/187`、lint `56 files`、build PASS、PC `111/111`、critical audit `0`、source/dist 一致、隐私扫描通过。真实回放 `404/1/403`、唯一原/规范代码 `403`、目标 `30001`、零目标 `17`、`7` 区、`organization_unmapped=0`、`395/8/287` 逐码逐值、`MQ257T -> MQ256T` 均已闭环。尚未发布，未完成登录态生产页面验收，目标数据集对 16 个业务用户组的 `READER` 权限同步待用户授权 |
 | SCOPE-014 / REQ-009 / AC-042：独立移动 iframe、无宿主 UI | 4~5 | 双入口构建；`multi-store-super-app/dist/mobile/index.html`；无标题/筛选/导出 |
 | SCOPE-015 / AC-043：两列 4 指标展开至 7；补充到店试驾率、试驾订单率、线索订单率 | 5 | 4→7→4 自动测试；三项公式/PC 同值断言；3 宽×2 主题截图 |
 | SCOPE-016 / AC-044 / AC-045 / AC-054：销售列表、销售卡收起/展开、首张展开 | 6 | 字段断言；15 家展收；PC/mobile 值对比 |
@@ -1267,7 +1273,7 @@ Phase 3AF～3AI 作为 v1.94 P0 增量待开发：只处理 PC 顶部独立 `MG 
 | `multi-store-super-app/iron-metrics-api.js` / `iron-metrics-model.js` / `iron-metrics-view.js` / `app.js` / `index.html` / `validation/iron-metrics-query.test.mjs` / `validation/iron-metrics-contract.test.mjs` / `validation/iron-metrics-app-integration.spec.js` / 既有 drill/export 回归测试 | Phase 3Z 打铁 DCC 四项门店范围合同 | 已完成并发布测试 App；只改 DCC 四项 SQL 范围、DCC 自身组织归属、DCC/非 DCC 安全并集、父级分子分母重聚合、DCC-only 门店表达、来源证据、名称 fallback、比较期缺行、DCC 名称和 `fieldGapReason` 当前/月/周/CSV。`app.js` 仅做加载/导出编排必要适配；未改 UI、其他数据源、销售/过程/目标、车系 fail-closed、移动端、发布配置和依赖；发布时已重新构建 `dist/` 并发布 `dist.0.1.0.zip` |
 | `multi-store-super-app/data-api.js` / `metrics.js` / `app.js` / `organization-view.js` / `validation/monthly-target.test.mjs` / `validation/mg-order-retail-target-source.test.mjs` / `validation/pc-role-drilldown.spec.js` / 必要时 `index.html` 静态资源版本 | Phase 3AB PC 订单目标切换为打铁最终目标输出 | 开发中/待复审；只改订单/零售目标源拆分、订单目标 `u32` 字段映射、输出行 SUM、空代码名称归属、订单组织守恒、目标状态隔离、对账审计和对应测试。不得改订单目标实际 SQL、零售目标实际 SQL、零售目标源、销售/过程指标、UI、导出字段集合、筛选、打铁指标、移动端、发布配置或依赖 |
 | `multi-store-super-app/iron-metrics-api.js` / `iron-metrics-contract.js` / `iron-metrics-model.js` / `vehicle-series.js` / 必要 `app.js` / `validation/iron-metrics-query.test.mjs` / `validation/iron-metrics-contract.test.mjs` / `validation/iron-metrics-app-integration.spec.js` / `validation/vehicle-series.test.mjs` / `validation/vehicle-series-multiselect.test.mjs` | Phase 3AD 销售车系筛选真实联动打铁 11 项 | 待开发；只改来源车系字段合同、销售闭集 mapper、unknown/other 样本语义、三阶段请求 identity/source state、fail-closed 证据和对应测试。不得改 11 项公式/目标/展示、销售链路枚举与过滤、过程分析其他区域、UI、导出入口、移动端、发布配置或依赖 |
-| `multi-store-super-app/small-order-config.js` / `small-order-api.js` / `small-order-model.js` / `small-order-view.js` / `settings.json` / `runtime-config.js` / `app.js` / `index.html` / `visual-sync.css` / `components.css` / `visual-base.css` / `visual-responsive.css` / `validation/small-order-*.test.mjs` / `validation/small-order-*.spec.js` / `validation/pc-role-drilldown.spec.js` | Phase 3AF～3AI MG 07 小订战报 | 待开发；只新增小订配置、目标/实际 API、canonical 组织映射、异常审计、独立视图状态、PC UI 与对应测试。可按构建需要最小同步复制清单，但不得新增依赖、升级 React/Vite/Playwright/TypeScript、改发布配置或把目标 Excel/假 dsId 写入运行时代码 |
+| `multi-store-super-app/small-order-config.js` / `small-order-api.js` / `small-order-model.js` / `small-order-view.js` / `small-order-contract.js` / `settings.json` / `runtime-config.js` / `app.js` / `index.html` / `visual-sync.css` / `components.css` / `visual-base.css` / `visual-responsive.css` / `validation/small-order-*.test.mjs` / `validation/small-order-*.spec.js` / `validation/pc-role-drilldown.spec.js` | Phase 3AF～3AI MG 07 小订战报 | 已完成本地开发、Review 和 QA 门禁；只新增小订配置、目标/实际 API、canonical 组织映射、异常审计、独立视图状态、PC UI 与对应测试。文件拆分后 `small-order-contract.js` 约 `284` 行、`small-order-model.js` 约 `138` 行；未新增依赖、未升级 React/Vite/Playwright/TypeScript、未改发布配置，未把目标 Excel/假 dsId 写入运行时代码。尚未发布，登录态生产页面验收和 16 组 `READER` 权限同步未完成 |
 | `multi-store-super-app/capture.js` | PC 专属 | mobile 不加载、不复制 |
 | `multi-store-super-app/validation/mobile-*.spec.js` | 各 Phase 待新建移动测试 | 覆盖视口、主题、交互、状态、竞态、协议 |
 | `multi-store-super-app/validation/pc-regression.spec.js` | Phase 9 待新建 PC 回归 | 锁定 URL/布局/导出/跳转 |

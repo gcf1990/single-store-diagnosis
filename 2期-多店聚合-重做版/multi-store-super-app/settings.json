@@ -1,0 +1,13 @@
+{
+  "name": "2期多店销售表现工作台",
+  "title": "2期多店销售表现工作台",
+  "dataMode": "live",
+  "pendingSources": [],
+  "environment": "production",
+  "singleStoreAppUrls": {
+    "development": "",
+    "test": "https://rdata-pv.rauto.com/open-apps/r8ce093b6d93143d8aa6852f/",
+    "production": "https://rdata-pv.rauto.com/open-apps/aca59d2e2e60f4be4b8b93ac/"
+  },
+  "mg07SmallOrderTargetDsId": "h8ae7b66fd5d141ec95bd246"
+}

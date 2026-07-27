@@ -1,0 +1,27 @@
+{
+  "name": "multi-store-diagnosis-super-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "test": "node --test validation/*.test.mjs",
+    "test:pc": "playwright test -c playwright.pc.config.js validation/pc-role-drilldown.spec.js validation/iron-metrics-*.spec.js validation/small-order-*.spec.js",
+    "build": "vite build && cp app.js runtime-config.js vehicle-series.js national-scope.js organization-view.js organization-scope.js data-api.js small-order-config.js small-order-contract.js small-order-model.js small-order-api.js small-order-view.js iron-metrics-contract.js iron-metrics-model.js iron-metrics-api.js iron-metrics-view.js filter-api.js filter-ui.js metrics.js tracking.js capture.js demo-fixture.js utils.js settings.json styles.css calendar.css components.css visual-base.css visual-funnel-process.css visual-analysis.css visual-responsive.css visual-sync.css iron-metrics.css small-order.css advisor-ai-diagnosis.png dist/",
+    "preview": "vite preview --host 0.0.0.0",
+    "lint": "node validation/syntax-check.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.6",
+    "@vitejs/plugin-react": "^6.0.3",
+    "playwright": "^1.61.1",
+    "typescript": "^5.8.2",
+    "vite": "^8.1.0"
+  }
+}

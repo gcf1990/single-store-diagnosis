@@ -1,0 +1,43 @@
+[
+  {
+    "date": "2026-07-28",
+    "status": "小订即将开始",
+    "progress": 0,
+    "progressText": "0.0%",
+    "cutoffDate": "",
+    "actualRange": null
+  },
+  {
+    "date": "2026-07-29",
+    "status": "小订进行中",
+    "progress": 0.04,
+    "progressText": "4.0%",
+    "cutoffDate": "2026-07-29",
+    "actualRange": {
+      "startDate": "2026-07-29",
+      "endDate": "2026-07-29"
+    }
+  },
+  {
+    "date": "2026-08-22",
+    "status": "小订进行中",
+    "progress": 1,
+    "progressText": "100.0%",
+    "cutoffDate": "2026-08-22",
+    "actualRange": {
+      "startDate": "2026-07-29",
+      "endDate": "2026-08-22"
+    }
+  },
+  {
+    "date": "2026-08-23",
+    "status": "小订已结束",
+    "progress": 1,
+    "progressText": "100.0%",
+    "cutoffDate": "2026-08-22",
+    "actualRange": {
+      "startDate": "2026-07-29",
+      "endDate": "2026-08-22"
+    }
+  }
+]

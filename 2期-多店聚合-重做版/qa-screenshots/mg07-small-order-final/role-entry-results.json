@@ -1,0 +1,152 @@
+[
+  {
+    "name": "headquarters",
+    "appViewLevel": "area",
+    "appDrillPath": [],
+    "smallViewState": {
+      "viewLevel": "area",
+      "drillPath": [],
+      "expanded": false
+    },
+    "smallStatus": "ready",
+    "smallSummary": {
+      "target": 30,
+      "actual": 10,
+      "achievementActual": 10,
+      "achievementRate": 0.3333333333333333,
+      "progressText": "4.0%",
+      "laggingCount": 0,
+      "ownStatus": "领先",
+      "scopeMode": "store_list",
+      "dataUpdatedAt": "2026-07-29 09:00:00",
+      "actualStatus": "ready",
+      "actualError": ""
+    },
+    "smallText": "MG 07小订战报 小订进行中 · 数据更新于 2026-07-29 09:00:00 展开小订达成表现 小订目标30 累计小订10 目标达成33.3% 时间进度4.0% 落后大区0个 小订达成表现 对象名称对象代码小订目标累计小订目标达成时间进度应达缺口状态操作 大区1 A1 20 1 5.0% 4.0% 0 领先 查看小区 大区2 A2 10 9 90.0% 4.0% 0 领先 查看小区"
+  },
+  {
+    "name": "region",
+    "appViewLevel": "district",
+    "appDrillPath": [],
+    "smallViewState": {
+      "viewLevel": "district",
+      "drillPath": [],
+      "expanded": false
+    },
+    "smallStatus": "ready",
+    "smallSummary": {
+      "target": 20,
+      "actual": 1,
+      "achievementActual": 1,
+      "achievementRate": 0.05,
+      "progressText": "4.0%",
+      "laggingCount": 0,
+      "ownStatus": "领先",
+      "scopeMode": "store_list",
+      "dataUpdatedAt": "2026-07-29 09:00:00",
+      "actualStatus": "ready",
+      "actualError": ""
+    },
+    "smallText": "MG 07小订战报 小订进行中 · 数据更新于 2026-07-29 09:00:00 展开小订达成表现 小订目标20 累计小订1 目标达成5.0% 时间进度4.0% 落后小区0个 小订达成表现 对象名称对象代码小订目标累计小订目标达成时间进度应达缺口状态操作 小区1 D1 20 1 5.0% 4.0% 0 领先 查看门店"
+  },
+  {
+    "name": "district",
+    "appViewLevel": "store",
+    "appDrillPath": [],
+    "smallViewState": {
+      "viewLevel": "store",
+      "drillPath": [],
+      "expanded": false
+    },
+    "smallStatus": "ready",
+    "smallSummary": {
+      "target": 20,
+      "actual": 1,
+      "achievementActual": 1,
+      "achievementRate": 0.05,
+      "progressText": "4.0%",
+      "laggingCount": 1,
+      "ownStatus": "落后",
+      "scopeMode": "store_list",
+      "dataUpdatedAt": "2026-07-29 09:00:00",
+      "actualStatus": "ready",
+      "actualError": ""
+    },
+    "smallText": "MG 07小订战报 小订进行中 · 数据更新于 2026-07-29 09:00:00 展开小订达成表现 小订目标20 累计小订1 目标达成5.0% 时间进度4.0% 落后门店1个 小订达成表现 对象名称对象代码小订目标累计小订目标达成时间进度应达缺口状态操作 门店2 S2 10 0 0.0% 4.0% 0 落后 -- 门店1 S1 10 1 10.0% 4.0% 0 领先 --"
+  },
+  {
+    "name": "salesDirector",
+    "appViewLevel": "store",
+    "appDrillPath": [],
+    "smallViewState": {
+      "viewLevel": "store",
+      "drillPath": [],
+      "expanded": false
+    },
+    "smallStatus": "ready",
+    "smallSummary": {
+      "target": 10,
+      "actual": 1,
+      "achievementActual": 1,
+      "achievementRate": 0.1,
+      "progressText": "4.0%",
+      "laggingCount": 0,
+      "ownStatus": "领先",
+      "scopeMode": "own_store",
+      "dataUpdatedAt": "2026-07-29 09:00:00",
+      "actualStatus": "ready",
+      "actualError": ""
+    },
+    "smallText": "MG 07小订战报 小订进行中 · 数据更新于 2026-07-29 09:00:00 展开小订达成表现 小订目标10 累计小订1 目标达成10.0% 时间进度4.0% 自身进度状态领先 小订达成表现 对象名称对象代码小订目标累计小订目标达成时间进度应达缺口状态操作 门店1 S1 10 1 10.0% 4.0% 0 领先 --"
+  },
+  {
+    "name": "investor",
+    "appViewLevel": "store",
+    "appDrillPath": [],
+    "smallViewState": {
+      "viewLevel": "store",
+      "drillPath": [],
+      "expanded": false
+    },
+    "smallStatus": "ready",
+    "smallSummary": {
+      "target": 20,
+      "actual": 10,
+      "achievementActual": 10,
+      "achievementRate": 0.5,
+      "progressText": "4.0%",
+      "laggingCount": 0,
+      "ownStatus": "领先",
+      "scopeMode": "store_list",
+      "dataUpdatedAt": "2026-07-29 09:00:00",
+      "actualStatus": "ready",
+      "actualError": ""
+    },
+    "smallText": "MG 07小订战报 小订进行中 · 数据更新于 2026-07-29 09:00:00 展开小订达成表现 小订目标20 累计小订10 目标达成50.0% 时间进度4.0% 落后门店0个 小订达成表现 对象名称对象代码小订目标累计小订目标达成时间进度应达缺口状态操作 门店1 S1 10 1 10.0% 4.0% 0 领先 -- 门店4 S4 10 9 90.0% 4.0% 0 领先 --"
+  },
+  {
+    "name": "exactStore",
+    "appViewLevel": "store",
+    "appDrillPath": [],
+    "smallViewState": {
+      "viewLevel": "store",
+      "drillPath": [],
+      "expanded": false
+    },
+    "smallStatus": "ready",
+    "smallSummary": {
+      "target": 10,
+      "actual": 1,
+      "achievementActual": 1,
+      "achievementRate": 0.1,
+      "progressText": "4.0%",
+      "laggingCount": 0,
+      "ownStatus": "领先",
+      "scopeMode": "own_store",
+      "dataUpdatedAt": "2026-07-29 09:00:00",
+      "actualStatus": "ready",
+      "actualError": ""
+    },
+    "smallText": "MG 07小订战报 小订进行中 · 数据更新于 2026-07-29 09:00:00 展开小订达成表现 小订目标10 累计小订1 目标达成10.0% 时间进度4.0% 自身进度状态领先 小订达成表现 对象名称对象代码小订目标累计小订目标达成时间进度应达缺口状态操作 门店1 S1 10 1 10.0% 4.0% 0 领先 --"
+  }
+]
