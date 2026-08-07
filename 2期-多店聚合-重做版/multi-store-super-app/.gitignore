@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+dist/
+dist.*.zip
+test-results/
+playwright-report/
+validation/*.png
+validation/*.jpg
+validation/*.jpeg
+.env
+.env.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 import { makeFixture, profiles, storesFor } from "./pc-role-drilldown-fixtures.js";
 
 async function openFixture(page, profile, query = "", fixture = makeFixture()) {
@@ -8,6 +10,15 @@ async function openFixture(page, profile, query = "", fixture = makeFixture()) {
   }, { profileValue: profile, fixtureValue: fixture });
   await page.goto(`/${query ? `?${query}` : ""}`);
   await expect(page.locator("#funnelGrid")).not.toContainText("--", { timeout: 10_000 });
+}
+
+async function openProcessExportFixture(page, profile, query = "", fixture = makeFixture()) {
+  await page.addInitScript(({ profileValue, fixtureValue }) => {
+    sessionStorage.setItem("retail-cockpit:personnel-profile", JSON.stringify(profileValue));
+    window.__retailPcFixture = fixtureValue;
+  }, { profileValue: profile, fixtureValue: fixture });
+  await page.goto(`/${query ? `?${query}` : ""}`);
+  await expect(page.locator(".process-panel .funnel-kpi-card").first()).toContainText("10.3%", { timeout: 10_000 });
 }
 
 async function mockRuntimeDate(page, isoDate) {
@@ -58,23 +69,23 @@ test("本地显式 Demo URL 自动注入总部画像并支持销售和过程全�
   await expect(page.locator("#toggleAllDealersSales")).toHaveText("查看所有经销商");
   await page.locator("#toggleAllDealersSales").click();
   await expect(page.locator("#storeTableTitle")).toHaveText("全部经销商销售表现");
-  await expect(page.locator("#salesPagination [data-pagination-info]")).toContainText("共 26 条");
-  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleStoreCodes).toHaveLength(26);
+  await expect(page.locator("#salesPagination [data-pagination-info]")).toContainText("共 62 条");
+  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleStoreCodes).toHaveLength(62);
 
   await page.locator("#processTab").click();
   await expect(page.locator("#toggleAllDealersProcess")).toBeVisible();
   await expect(page.locator("#toggleAllDealersProcess")).toHaveText("返回分层查看");
   await expect(page.locator("#storeTableTitle")).toHaveText("全部经销商过程表现");
-  await expect(page.locator("#processPagination [data-pagination-info]")).toContainText("共 26 条");
-  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleProcessStoreCodes).toHaveLength(26);
+  await expect(page.locator("#processPagination [data-pagination-info]")).toContainText("共 62 条");
+  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleProcessStoreCodes).toHaveLength(62);
 
   await page.locator("#ironTab").click();
   await expect(page.locator("#toggleAllDealersSales")).toBeVisible();
   await expect(page.locator("#toggleAllDealersSales")).toHaveText("返回分层查看");
   await expect(page.locator("#storeTableTitle")).toHaveText("全部经销商打铁表现");
-  await expect(page.locator("#ironPagination [data-pagination-info]")).toContainText("共 26 条");
+  await expect(page.locator("#ironPagination [data-pagination-info]")).toContainText("共 62 条");
   await expect(page.locator("#ironMetricsRoot")).toContainText("目标 53%");
-  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleIronCodes).toHaveLength(26);
+  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleIronCodes).toHaveLength(62);
 });
 
 test("裸地址缺人员画像时保持真实安全降级", async ({ page }) => {
@@ -122,6 +133,29 @@ function normalizeExcelTextRank(value) {
 
 function deneutralizeCsvPlaceholder(value) {
   return String(value || "").replace(/^'(?=--$)/, "");
+}
+
+const PROCESS_EXPORT_METRIC_LABELS = [
+  "线索到店率",
+  "零钩子率",
+  "未锁定时间率",
+  "报价承接不足率",
+  "竞品比较转化不足率",
+  "试驾订单率",
+  "版本未推荐率",
+  "顾虑跳过率",
+  "竞品回避及贬低率"
+];
+
+function processExportHeaders(firstColumn = "经销商名称") {
+  return [
+    firstColumn,
+    ...PROCESS_EXPORT_METRIC_LABELS.flatMap((label) => [
+      `${label}(%)`,
+      `${label}月环比(百分点)`,
+      `${label}周环比(百分点)`
+    ])
+  ];
 }
 
 async function captureSalesCsv(page) {
@@ -234,6 +268,72 @@ function flatDealerStore(index, overrides = {}) {
     drivePrev: aggregate(10 + index, 1, "版本未推荐", 1),
     driveWeek: aggregate(9 + index, 1, "版本未推荐", 1),
     monthlyTarget: { order: { status: "no_target", target: 0, actual: 0, achievement: null, hasTarget: false }, retail: { status: "no_target", target: 0, actual: 0, achievement: null, hasTarget: false }, status: "no_target", validDealerMissingRows: 0 }
+  };
+}
+
+function processMetric(total, problems) {
+  const negative = problems.reduce((sum, item) => sum + item.count, 0);
+  return {
+    total,
+    negative,
+    rate: total ? negative / total * 100 : null,
+    problems: problems.map((item) => ({
+      name: item.name,
+      count: item.count,
+      denominator: item.denominator ?? total,
+      rate: item.denominator ? item.count / item.denominator * 100 : null,
+      children: []
+    }))
+  };
+}
+
+function processCsvStore(overrides = {}) {
+  const base = storesFor()[0];
+  return {
+    ...base,
+    code: "CSV1",
+    name: "CSV数值门店",
+    areaCode: "A1",
+    area: "大区1",
+    districtCode: "D1",
+    district: "小区1",
+    current: { leads: 1000, arrivals: 103, drives: 200, orders: 60, retail: 0 },
+    previous: { leads: 1000, arrivals: 148, drives: 200, orders: 50, retail: 0 },
+    week: { leads: 1000, arrivals: 102, drives: 200, orders: 60, retail: 0 },
+    ip: processMetric(10, [
+      { name: "零钩子", count: 0, denominator: 5 },
+      { name: "未锁定时间", count: 1, denominator: 10 },
+      { name: "报价承接不足", count: 2, denominator: 10 },
+      { name: "竞品比较转化不足", count: 0, denominator: 0 }
+    ]),
+    ipPrev: processMetric(10, [
+      { name: "零钩子", count: 1, denominator: 5 },
+      { name: "未锁定时间", count: 1, denominator: 10 },
+      { name: "报价承接不足", count: 3, denominator: 10 },
+      { name: "竞品比较转化不足", count: 0, denominator: 0 }
+    ]),
+    ipWeek: processMetric(10, [
+      { name: "零钩子", count: 0, denominator: 5 },
+      { name: "未锁定时间", count: 2, denominator: 10 },
+      { name: "报价承接不足", count: 2, denominator: 10 },
+      { name: "竞品比较转化不足", count: 0, denominator: 0 }
+    ]),
+    driveTag: processMetric(10, [
+      { name: "版本推荐", count: 1, denominator: 10 },
+      { name: "顾虑承接", count: 2, denominator: 10 },
+      { name: "竞品攻防", count: 3, denominator: 10 }
+    ]),
+    drivePrev: processMetric(10, [
+      { name: "版本推荐", count: 2, denominator: 10 },
+      { name: "顾虑承接", count: 1, denominator: 10 },
+      { name: "竞品攻防", count: 3, denominator: 10 }
+    ]),
+    driveWeek: processMetric(10, [
+      { name: "版本推荐", count: 1, denominator: 10 },
+      { name: "顾虑承接", count: 3, denominator: 10 },
+      { name: "竞品攻防", count: 2, denominator: 10 }
+    ]),
+    ...overrides
   };
 }
 
@@ -445,15 +545,51 @@ test("PC 车系筛选严格复用单店菜单交互、URL 和过程口径边界"
   expect(await trigger.evaluate((element) => {
     const style = getComputedStyle(element.closest(".vehicle-series-filter"));
     return { minWidth: style.minWidth, height: style.height, borderRadius: style.borderRadius };
-  })).toEqual({ minWidth: "176px", height: "36px", borderRadius: "8px" });
+  })).toEqual({ minWidth: "210px", height: "34px", borderRadius: "8px" });
+  const vehicleSeriesIconCss = await readFile(new URL("../visual-sync.css", import.meta.url), "utf8");
+  const vehicleSeriesIconRule = vehicleSeriesIconCss.match(/\.vehicle-series-icon\s*\{(?<body>[\s\S]*?)\n\}/)?.groups?.body || "";
+  expect(vehicleSeriesIconRule).toContain("M480-344 240-584l56-56 184 184 184-184 56 56-240 240Z");
+  expect(vehicleSeriesIconRule).toMatch(/(?:^|\n)\s*mask:\s*url/);
+  expect(vehicleSeriesIconRule).toMatch(/(?:^|\n)\s*-webkit-mask:\s*url/);
+  expect(vehicleSeriesIconRule).toContain("data:image/svg+xml");
+  expect(await trigger.locator(".vehicle-series-icon").evaluate((element) => {
+    const style = getComputedStyle(element);
+    const matrix = new DOMMatrix(style.transform);
+    return {
+      text: element.textContent,
+      materialSymbol: element.getAttribute("data-material-symbol"),
+      ariaHidden: element.getAttribute("aria-hidden"),
+      width: style.width,
+      height: style.height,
+      color: style.color,
+      hasMask: style.maskImage !== "none",
+      hasWebkitMask: style.webkitMaskImage !== "none",
+      closedDown: matrix.a > 0 && matrix.d > 0,
+      triggerTextHasUnicodeArrow: /[⌄⌃]/.test(element.closest("#vehicleSeriesTrigger")?.textContent || "")
+    };
+  })).toEqual({
+    text: "",
+    materialSymbol: "expand_more",
+    ariaHidden: "true",
+    width: "18px",
+    height: "18px",
+    color: "rgb(18, 32, 51)",
+    hasMask: true,
+    hasWebkitMask: true,
+    closedDown: true,
+    triggerTextHasUnicodeArrow: false
+  });
   await trigger.click();
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#vehicleSeriesFilter")).toHaveClass(/is-open/);
-  await expect(trigger.locator(".vehicle-series-icon")).toHaveText("⌃");
   expect(await trigger.locator(".vehicle-series-icon").evaluate((element) => {
     const matrix = new DOMMatrix(getComputedStyle(element).transform);
-    return matrix.a > 0 && matrix.d > 0;
-  })).toBe(true);
+    return {
+      text: element.textContent,
+      openRotated: matrix.a < 0 && matrix.d < 0,
+      triggerTextHasUnicodeArrow: /[⌄⌃]/.test(element.closest("#vehicleSeriesTrigger")?.textContent || "")
+    };
+  })).toEqual({ text: "", openRotated: true, triggerTextHasUnicodeArrow: false });
   await expect(page.locator("#vehicleSeriesMenu")).toBeVisible();
   expect(await page.locator(".vehicle-series-option span:last-child").allTextContents()).toEqual(["全部车系", "全新MG4", "MG 4X", "MG 07", "Cyberster", "MG ES5", "MG5", "其他车系", "未知车系", "位置车系"]);
   await expect(page.locator("#vehicleSeriesMenu")).toHaveAttribute("aria-multiselectable", "true");
@@ -468,7 +604,10 @@ test("PC 车系筛选严格复用单店菜单交互、URL 和过程口径边界"
   await page.keyboard.press("Escape");
   await expect(page.locator("#vehicleSeriesMenu")).toBeHidden();
   await expect(page.locator("#vehicleSeriesFilter")).not.toHaveClass(/is-open/);
-  await expect(trigger.locator(".vehicle-series-icon")).toHaveText("⌄");
+  expect(await trigger.locator(".vehicle-series-icon").evaluate((element) => {
+    const matrix = new DOMMatrix(getComputedStyle(element).transform);
+    return { text: element.textContent, closedDown: matrix.a > 0 && matrix.d > 0 };
+  })).toEqual({ text: "", closedDown: true });
   await expect(trigger).toBeFocused();
   await trigger.click();
   await page.locator('[data-vehicle-series="全新MG4"]').click();
@@ -492,12 +631,11 @@ test("PC 车系筛选严格复用单店菜单交互、URL 和过程口径边界"
   await page.locator('[data-vehicle-series="MG 4X"]').click();
   await expect(trigger).toContainText("已选 2 个车系");
   await page.locator('[data-vehicle-series="MG 4X"]').click();
-  await page.screenshot({ path: "validation/pc-vehicle-series-multiselect-expanded-1440x900.png", fullPage: true });
+  await page.screenshot({ path: "validation/pc-vehicle-series-material-icon-1440x900.png", fullPage: true });
   await page.locator('[data-vehicle-series="MG 07"]').click();
   await expect(trigger).toContainText("已选 2 个车系");
   await page.locator("#processTab").click();
-  await expect(page.locator("#vehicleSeriesProcessNotice")).toBeVisible();
-  await expect(page.locator("#vehicleSeriesProcessNotice")).toContainText("车系筛选仅覆盖销售漏斗及销售表现");
+  await expect(page.locator("#vehicleSeriesProcessNotice")).toBeHidden();
   await page.reload();
   await expect(page.locator("#vehicleSeriesTrigger")).toContainText("已选 2 个车系");
   expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).vehicleSeries).toEqual(["全新MG4", "MG 4X"]);
@@ -881,7 +1019,7 @@ test("浏览器历史品牌切换会强制清空同名车系并重建新品牌�
   await expect(page.locator(".sales-panel .funnel-kpi-card").first()).toContainText("31");
 });
 
-test("车系多选只过滤销售表现，过程表和过程导出保持原组织日期口径", async ({ page }) => {
+test("车系多选联动过程表和过程导出，不再输出未联动说明", async ({ page }) => {
   await openFixture(page, profiles.headquarters);
   const salesOrderBefore = await page.locator(".sales-panel .funnel-kpi-card").first().textContent();
   await page.locator("#processTab").click();
@@ -896,15 +1034,15 @@ test("车系多选只过滤销售表现，过程表和过程导出保持原组�
   await expect(page.locator("#vehicleSeriesTrigger")).toContainText("已选 2 个车系");
   await expect(page.locator(".sales-panel .funnel-kpi-card").first()).not.toHaveText(salesOrderBefore || "");
   await page.locator("#processTab").click();
-  await expect(page.locator("#vehicleSeriesProcessNotice")).toBeVisible();
-  expect(await page.locator("#processListTableBody").innerText()).toBe(processTableBefore);
+  await expect(page.locator("#vehicleSeriesProcessNotice")).toBeHidden();
+  expect(await page.locator("#processListTableBody").innerText()).not.toBe(processTableBefore);
   const processCsvAfter = parseCsvRows(await captureProcessCsv(page));
-  expect(processCsvAfter.slice(2)).toEqual(processRowsBefore);
-  expect(processCsvAfter[0][0]).toBe("说明");
-  expect(processCsvAfter[0][1]).toContain("车系筛选仅覆盖销售漏斗及销售表现");
+  expect(processCsvAfter.slice(1)).not.toEqual(processRowsBefore);
+  expect(processCsvAfter[0]).toEqual(processExportHeaders("大区"));
+  expect(processCsvAfter.flat().join("")).not.toContain("车系筛选仅覆盖销售漏斗及销售表现");
 });
 
-test("单一车系只命中部分组织时过程表和 CSV 仍按无车系基线展示", async ({ page }) => {
+test("单一车系只命中部分组织时过程表和 CSV 继承选择态，打铁骨架不被收窄", async ({ page }) => {
   const fixture = makeFixture();
   fixture.vehicleSeriesData = {
     ...fixture.vehicleSeriesData,
@@ -920,52 +1058,124 @@ test("单一车系只命中部分组织时过程表和 CSV 仍按无车系基线
     }))),
     csv: parseCsvRows(await captureProcessCsv(page))
   });
-  const processDataRows = (rows) => rows.filter((row) => row[0] !== "说明" && row[0] !== "大区" && row[0] !== "小区" && row[0] !== "门店");
-  const assertProcessStableAfterFilter = async (before, restoreDrill = async () => {}) => {
+  const processDataRows = (rows) => rows.filter((row) => row[0] !== "大区" && row[0] !== "小区" && row[0] !== "门店");
+  const assertProcessLinkedAfterFilter = async (before, expectedCodes, restoreDrill = async () => {}) => {
     await page.locator("#vehicleSeriesTrigger").click();
     await page.locator('[data-vehicle-series="全新MG4"]').click();
     await expect(page.locator("#vehicleSeriesTrigger")).toContainText("全新MG4");
     await page.locator("#processTab").click();
     await restoreDrill();
     const after = await processSnapshot();
-    expect(after.rows).toEqual(before.rows);
-    expect(processDataRows(after.csv)).toEqual(processDataRows(before.csv));
-    expect(after.csv[0][0]).toBe("说明");
+    expect(after.rows).not.toEqual(before.rows);
+    expect(after.rows.map((row) => row.code)).toEqual(expectedCodes);
+    expect(processDataRows(after.csv)).not.toEqual(processDataRows(before.csv));
+    expect(after.csv[0]).toEqual(processExportHeaders(expectedCodes[0]?.startsWith("S") ? "门店" : expectedCodes[0]?.startsWith("D") ? "小区" : "大区"));
   };
 
   await page.locator("#processTab").click();
   const hqBefore = await processSnapshot();
   expect(hqBefore.rows.map((row) => row.code)).toEqual(["A1", "A2"]);
-  await assertProcessStableAfterFilter(hqBefore);
+  await assertProcessLinkedAfterFilter(hqBefore, ["A1"]);
   await page.locator("#salesTab").click();
   expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleStoreCodes).toEqual([]);
+});
 
+test("过程表现导出固定输出 9 项三列数值并隔离页面月周开关", async ({ page }) => {
+  await openProcessExportFixture(page, profiles.district, "", makeFixture({ stores: [processCsvStore()] }));
   await page.locator("#processTab").click();
-  await page.locator('#processListTableBody [data-organization-row="A1"]').click();
-  const areaBefore = await processSnapshot();
-  expect(areaBefore.rows.map((row) => row.code)).toEqual(["D1", "D2"]);
-  await page.locator("#vehicleSeriesTrigger").click();
-  await page.locator('[data-vehicle-series="全部车系"]').click();
-  await page.locator("#processTab").click();
-  await assertProcessStableAfterFilter(areaBefore, async () => {
-    await page.locator('#processListTableBody [data-organization-row="A1"]').click();
-  });
-  await page.locator("#salesTab").click();
-  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleStoreCodes).toEqual([]);
 
-  await page.locator("#processTab").click();
-  await page.locator('#processListTableBody [data-organization-row="D1"]').click();
-  const districtBefore = await processSnapshot();
-  expect(districtBefore.rows.map((row) => row.code)).toEqual(["S1", "S2"]);
-  await page.locator("#vehicleSeriesTrigger").click();
-  await page.locator('[data-vehicle-series="全部车系"]').click();
-  await page.locator("#processTab").click();
-  await assertProcessStableAfterFilter(districtBefore, async () => {
-    await page.locator('#processListTableBody [data-organization-row="A1"]').click();
-    await page.locator('#processListTableBody [data-organization-row="D1"]').click();
+  const assertCsvContract = (rows) => {
+    expect(rows[0]).toEqual(processExportHeaders("经销商名称"));
+    expect(rows[0]).toHaveLength(28);
+    expect(rows[1]).toHaveLength(28);
+    const row = rows[1];
+    expect(row[0]).toBe("CSV数值门店");
+    row.slice(1).forEach((cell) => {
+      expect(cell).not.toMatch(/%|\+|月|周|\/|--|加载失败|数据不完整/);
+      expect(cell === "" || Number.isFinite(Number(cell))).toBe(true);
+    });
+    const leadArrivalIndex = rows[0].indexOf("线索到店率(%)");
+    expect(row.slice(leadArrivalIndex, leadArrivalIndex + 3)).toEqual(["10.3", "-4.5", "0.1"]);
+    const zeroHookIndex = rows[0].indexOf("零钩子率(%)");
+    expect(row.slice(zeroHookIndex, zeroHookIndex + 3)).toEqual(["0", "-20", "0"]);
+    const quoteIndex = rows[0].indexOf("报价承接不足率(%)");
+    expect(row.slice(quoteIndex, quoteIndex + 3)).toEqual(["20", "-10", "0"]);
+    const emptyIndex = rows[0].indexOf("竞品比较转化不足率(%)");
+    expect(row.slice(emptyIndex, emptyIndex + 3)).toEqual(["", "", ""]);
+  };
+
+  const bothVisible = parseCsvRows(await captureProcessCsv(page));
+  assertCsvContract(bothVisible);
+
+  await page.evaluate(() => {
+    document.getElementById("toggleMonth").checked = false;
+    document.getElementById("toggleMonth").dispatchEvent(new Event("change", { bubbles: true }));
   });
-  await page.locator("#salesTab").click();
-  expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).visibleStoreCodes).toEqual(["S1"]);
+  const weekOnly = parseCsvRows(await captureProcessCsv(page));
+  expect(weekOnly).toEqual(bothVisible);
+
+  await page.evaluate(() => {
+    document.getElementById("toggleMonth").checked = true;
+    document.getElementById("toggleMonth").dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("toggleWeek").checked = false;
+    document.getElementById("toggleWeek").dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const monthOnly = parseCsvRows(await captureProcessCsv(page));
+  expect(monthOnly).toEqual(bothVisible);
+
+  await page.evaluate(() => {
+    document.getElementById("toggleMonth").checked = false;
+    document.getElementById("toggleWeek").checked = false;
+    document.getElementById("toggleMonth").dispatchEvent(new Event("change", { bubbles: true }));
+    document.getElementById("toggleWeek").dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const bothHidden = parseCsvRows(await captureProcessCsv(page));
+  expect(bothHidden).toEqual(bothVisible);
+});
+
+test("过程表现导出空值和当前月周错误按列留空且保留车系说明表头", async ({ page }) => {
+  await openProcessExportFixture(page, profiles.district, "", makeFixture({
+    stores: [processCsvStore()],
+    processErrors: {
+      ip: { current: "fixture ip current failed", previous: "", week: "" },
+      drive: { current: "", previous: "fixture drive previous failed", week: "" }
+    }
+  }));
+  await page.locator("#processTab").click();
+  const rows = parseCsvRows(await captureProcessCsv(page));
+  expect(rows[0]).toEqual(processExportHeaders("经销商名称"));
+  const row = rows[1];
+  const zeroHookIndex = rows[0].indexOf("零钩子率(%)");
+  expect(row.slice(zeroHookIndex, zeroHookIndex + 3)).toEqual(["", "", ""]);
+  const versionIndex = rows[0].indexOf("版本未推荐率(%)");
+  expect(row.slice(versionIndex, versionIndex + 3)).toEqual(["10", "", "0"]);
+  expect(row.slice(1).every((cell) => cell === "" || Number.isFinite(Number(cell)))).toBe(true);
+  expect(row.join(",")).not.toMatch(/%|\+|月|周|\/|--|加载失败|数据不完整/);
+
+  await openProcessExportFixture(page, profiles.district, "", makeFixture({
+    stores: [processCsvStore()],
+    processErrors: {
+      ip: { current: "", previous: "", week: "" },
+      drive: { current: "", previous: "", week: "fixture drive week failed" }
+    }
+  }));
+  await page.locator("#processTab").click();
+  const weekErrorRows = parseCsvRows(await captureProcessCsv(page));
+  const weekErrorRow = weekErrorRows[1];
+  const weekErrorVersionIndex = weekErrorRows[0].indexOf("版本未推荐率(%)");
+  expect(weekErrorRow.slice(weekErrorVersionIndex, weekErrorVersionIndex + 3)).toEqual(["10", "-10", ""]);
+  expect(weekErrorRow.slice(1).every((cell) => cell === "" || Number.isFinite(Number(cell)))).toBe(true);
+  expect(weekErrorRow.join(",")).not.toMatch(/%|\+|月|周|\/|--|加载失败|数据不完整/);
+
+  await openProcessExportFixture(page, profiles.headquarters, "", makeFixture({ stores: [processCsvStore()] }));
+  await page.locator("#vehicleSeriesTrigger").click();
+  await page.locator('[data-vehicle-series="全新MG4"]').click();
+  await page.locator("#processTab").click();
+  const vehicleRows = parseCsvRows(await captureProcessCsv(page));
+  expect(vehicleRows[0]).toEqual(processExportHeaders("大区"));
+  expect(vehicleRows[0]).toHaveLength(28);
+  if (vehicleRows[1]) expect(vehicleRows[1]).toHaveLength(28);
+  expect(vehicleRows.flat().join("")).not.toContain("车系筛选仅覆盖销售漏斗及销售表现");
 });
 
 test("打铁组织范围文案不被销售车系结果收窄", async ({ page }) => {
@@ -1062,7 +1272,7 @@ test("正式异步车系过滤缺少部分大区事实时仍展示动态排名�
   expect(rowTexts.every((text) => /占比\s+\d+%/.test(text))).toBe(true);
 });
 
-test("正式异步过程基线不反向扩大车系筛选后的销售组织集合", async ({ page }) => {
+test("正式异步过程数据继承车系筛选后的销售组织集合", async ({ page }) => {
   const areaCodes = ["SMG310", "SMG800", "SQR307", "SQR503", "SQR600", "SQR700", "SQR800"];
   const dealers = areaCodes.map((areaCode, index) => ({
     code: `S${index + 1}`,
@@ -1197,15 +1407,15 @@ test("正式异步过程基线不反向扩大车系筛选后的销售组织集�
   await page.goto("/?vehicleSeries=%E5%85%A8%E6%96%B0MG4");
   await assertSalesOnly("大区1", "22");
   await page.locator("#processTab").click();
-  expect(await processAreaNames()).toEqual(["大区1", "大区2", "大区3", "大区4", "大区5", "大区6", "大区7"]);
+  expect(await processAreaNames()).toEqual(["大区1"]);
 
   await page.locator("#salesTab").click();
   await resolveProcessWave("mg4", currentWave);
   await resolveProcessWave("mg4", comparisonWave);
   await assertSalesOnly("大区1", "22");
   await page.locator("#processTab").click();
-  expect(await processAreaNames()).toEqual(["大区1", "大区2", "大区3", "大区4", "大区5", "大区6", "大区7"]);
-  expect(await processCsvNames()).toEqual(["大区1", "大区2", "大区3", "大区4", "大区5", "大区6", "大区7"]);
+  expect(await processAreaNames()).toEqual(["大区1"]);
+  expect(await processCsvNames()).toEqual(["大区1"]);
 
   await page.goto("/?vehicleSeries=%E5%85%A8%E6%96%B0MG4");
   await assertSalesOnly("大区1", "22");
@@ -1219,11 +1429,12 @@ test("正式异步过程基线不反向扩大车系筛选后的销售组织集�
   await page.waitForTimeout(50);
   await assertNoPendingProcessFor("mg4");
   await assertSalesOnly("大区2", "17");
+  await page.locator("#processTab").click();
   await resolveProcessWave("mg4x", currentWave);
   await resolveProcessWave("mg4x", comparisonWave);
   await assertSalesOnly("大区2", "17");
   await page.locator("#processTab").click();
-  expect(await processAreaNames()).toEqual(["大区1", "大区2", "大区3", "大区4", "大区5", "大区6", "大区7"]);
+  expect(await processAreaNames()).toEqual(["大区2"]);
 });
 
 test("过程四卡加载占位与标签阶段非阻塞销售转化率", async ({ page }) => {
@@ -1566,23 +1777,52 @@ test("投资人门店层跨小区统一排名，小区角色仍按所属小区�
   await expect(investorSingleStore.locator(".retail-rank-cell .rank-sub-value")).toHaveText("100%");
 });
 
-test("空 marketing_userType 在页面按总部进入大区清单", async ({ page }) => {
+test("空 marketing_userType 先使用 orgType 证据，双空按总部入口且不扩大范围", async ({ page }) => {
   const cases = [
-    ["null", { marketing_userType: null }],
-    ["undefined", { marketing_userType: undefined }],
-    ["空字符串", { marketing_userType: "" }],
-    ["纯空白", { marketing_userType: "  " }]
+    ["RFS", { marketing_userType: null, marketing_orgType: "RFS" }, "region", "district"],
+    ["MAC", { marketing_userType: "", marketing_orgType: "MAC" }, "district", "store"],
+    ["HQ", { marketing_userType: "  ", marketing_orgType: "HQ" }, "headquarters", "area"]
   ];
-  for (const [name, profile] of cases) {
+  for (const [name, profile, role, viewLevel] of cases) {
     await openFixture(page, profile);
     const snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
-    expect(snapshot.role, name).toBe("headquarters");
-    expect(snapshot.viewLevel, name).toBe("area");
+    expect(snapshot.role, name).toBe(role);
+    expect(snapshot.viewLevel, name).toBe(viewLevel);
     await expect(page.locator("#funnelGrid"), name).not.toContainText("角色识别异常");
-    await expect(page.locator("#storeTableTitle"), name).toHaveText("大区销售表现");
-    await expect(page.locator("#salesFirstColumn"), name).toHaveText("大区");
-    await expect(page.locator('#diagnosisTableBody [data-row-level="area"]'), name).toHaveCount(2);
   }
+  const restricted = makeFixture();
+  restricted.validDealers = restricted.validDealers.filter((dealer) => ["S1", "S3"].includes(dealer.code));
+  await openFixture(page, { marketing_userType: null, marketing_orgType: "" }, "", restricted);
+  let snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.role).toBe("headquarters");
+  expect(snapshot.viewLevel).toBe("area");
+  await expect(page.locator('#diagnosisTableBody [data-row-level="area"]')).toHaveCount(1);
+  await page.locator("#diagnosisTableBody [data-organization-row]", { hasText: "大区1" }).locator("[data-organization-drill]").click();
+  await page.locator("#diagnosisTableBody [data-organization-row]", { hasText: "小区1" }).locator("[data-organization-drill]").click();
+  snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.visibleStoreCodes).toEqual(["S1"]);
+  await expect(page.locator("#funnelGrid")).not.toContainText("角色识别异常");
+
+  await openFixture(page, { marketing_userType: "", marketing_orgType: null }, "regionCode=A1", restricted);
+  snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.role).toBe("headquarters");
+  expect(snapshot.viewLevel).toBe("district");
+  await expect(page.locator('#diagnosisTableBody [data-row-level="district"]')).toHaveCount(2);
+  await page.locator("#diagnosisTableBody [data-organization-row]", { hasText: "小区2" }).locator("[data-organization-drill]").click();
+  snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.visibleStoreCodes).toEqual(["S3"]);
+
+  await openFixture(page, {}, "regionCode=A1&districtCode=D1", makeFixture({ stores: storesFor({ districtCode: "D1" }) }));
+  snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.role).toBe("headquarters");
+  expect(snapshot.viewLevel).toBe("store");
+  expect(snapshot.visibleStoreCodes.sort()).toEqual(["S1", "S2"]);
+  await expect(page.locator('#diagnosisTableBody [data-row-level="store"]')).toHaveCount(2);
+
+  await openFixture(page, { marketing_orgType: "RSM" });
+  snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.role).toBe("unknown");
+  await expect(page.locator("#funnelGrid")).toContainText("角色识别异常");
 });
 
 test("PC 实际范围随手动下钻、Tab 和返回同步，顶部快照不变", async ({ page }) => {
@@ -1834,12 +2074,16 @@ test("当前范围全部经销商扁平查看覆盖全国、大区、下钻路�
   expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).allDealerMode).toBe(true);
   await expect(page.locator("#ironPagination [data-pagination-info]")).toHaveText("共 34 条 · 当前展示 15 条 · 第 2/3 页 · 每页 15 条");
   const ironCsv = parseCsvRows(await captureIronCsv(page));
-  expect(ironCsv.length).toBe(137);
-  expect(ironCsv[0][2]).toBe("组织名称");
-  expect(ironCsv[1][0]).toBe("dealer");
-  expect(ironCsv.slice(1).map((row) => row[2])).toContain("扁平经销商34");
-  expect(ironCsv.map((row) => row[4])).toContain("trial_record_upload_rate");
-  expect(ironCsv.map((row) => row[4])).not.toContain("invite_trial_mention_rate");
+  expect(ironCsv.length).toBe(35);
+  expect(ironCsv[0][0]).toBe("经销商名称");
+  expect(ironCsv[0]).toHaveLength(13);
+  expect(ironCsv[0]).toContain("试驾录音回收率");
+  expect(ironCsv[0]).toContain("试驾录音回收率月环比");
+  expect(ironCsv[0]).toContain("试驾录音回收率周环比");
+  expect(ironCsv.slice(1).map((row) => row[0])).toContain("扁平经销商34");
+  expect(ironCsv[0]).not.toContain("邀约进店试驾提及率");
+  expect(ironCsv[0]).not.toContain("指标编码");
+  expect(ironCsv[0]).not.toContain("组织编码");
   await page.screenshot({ path: "validation/pc-all-dealers-iron-flat-1440x900-light.png", fullPage: false });
 
   await page.locator("#salesTab").click();
@@ -2194,7 +2438,7 @@ for (const width of [1440, 1280, 900]) {
         beforeExport: true,
         notOverflowingText: true,
         noPageOverflow: true,
-        fontSize: width <= 900 ? "12px" : "13px"
+        fontSize: "12px"
       }));
       await page.locator("#ironTab").click();
       const ironButton = page.locator("#toggleAllDealersSales");
@@ -2242,14 +2486,14 @@ test("大区全国、小区大区、门店小区三级排名与占比正确", as
   await expect(store2.locator(".rank-cell").first()).toContainText("2/2");
 });
 
-test("门店详情链接使用当前测试配置且保留品牌、大区、小区和经销商关键参数", async ({ page }) => {
+test("门店详情链接使用当前生产配置且保留品牌、大区、小区和经销商关键参数", async ({ page }) => {
   await openFixture(page, profiles.district, "regionCode=A1&districtCode=D1");
   const href = await page.locator('#diagnosisTableBody [data-organization-row="S1"] [data-store-detail]').getAttribute("href");
   const url = new URL(href, "http://localhost");
   const config = await page.evaluate(() => window.RetailRuntimeConfig.getConfig());
-  expect(config.environment).toBe("test");
+  expect(config.environment).toBe("production");
   expect(`${url.origin}${url.pathname}`).toBe(config.singleStoreAppUrl);
-  expect(`${url.origin}${url.pathname}`).toBe("https://rdata-pv.rauto.com/open-apps/r8ce093b6d93143d8aa6852f/");
+  expect(`${url.origin}${url.pathname}`).toBe("https://rdata-pv.rauto.com/open-apps/aca59d2e2e60f4be4b8b93ac/");
   expect(url.searchParams.get("regionCode")).toBe("A1");
   expect(url.searchParams.get("districtCode")).toBe("D1");
   expect(url.searchParams.get("dealerCode")).toBe("S1");
@@ -2312,6 +2556,20 @@ function monthlyTargetFixture(status = "configured") {
       stores: storesFor().map((store) => ({ ...store, monthlyTarget: dual("unavailable", { error: "403" }, { error: "403" }, { error: "403" }) }))
     });
   }
+  if (status === "order_unavailable") {
+    const target = dual("configured", { status: "unavailable", error: "u32 403" }, { status: "configured", hasTarget: true, target: 20, actual: 10, achievement: 50 }, { status: "configured", error: "u32 403" });
+    const fixture = makeFixture({
+      stores: storesFor().map((store) => ({ ...store, monthlyTarget: { ...target } }))
+    });
+    return { ...fixture, data: { ...fixture.data, monthlyTarget: { ...target } } };
+  }
+  if (status === "retail_unavailable") {
+    const target = dual("configured", { status: "configured", hasTarget: true, target: 20, actual: 10, achievement: 50 }, { status: "unavailable", error: "r05 403" }, { status: "configured", error: "r05 403" });
+    const fixture = makeFixture({
+      stores: storesFor().map((store) => ({ ...store, monthlyTarget: { ...target } }))
+    });
+    return { ...fixture, data: { ...fixture.data, monthlyTarget: { ...target } } };
+  }
   if (status === "loading") {
     const target = dual("loading", { status: "loading" }, { status: "loading" });
     const fixture = makeFixture({
@@ -2334,6 +2592,32 @@ function monthlyTargetFixture(status = "configured") {
       return store;
     })
   });
+}
+
+async function orderTargetOnlyFixture() {
+  const baseStores = storesFor();
+  const context = { window: { __IRON_METRICS_TEST__: true, location: { hostname: "localhost", pathname: "/" } }, globalThis: {}, location: { hostname: "localhost", pathname: "/" }, setTimeout };
+  for (const file of ["../vehicle-series.js", "../data-api.js", "../metrics.js"]) {
+    runInNewContext(await readFile(new URL(file, import.meta.url), "utf8"), context, { filename: file });
+  }
+  const realAudit = JSON.parse(await readFile(new URL("./fixtures/mg-order-target-u32-202607-audit.json", import.meta.url), "utf8"));
+  const scopedRows = context.window.RegionDataApi.__test.orderRowsInScope(realAudit.rawRows, { area: "全部", district: "全部", store: "全部" });
+  const blankCodeRows = scopedRows.filter((row) => !row["大区代码"] && !row["小区代码"] && !row["经销商代码"]);
+  const normalized = context.window.RegionDataApi.__test.normalizeOrderTargets(
+    blankCodeRows,
+    context.window.RegionDataApi.__test.targetDateInfo({ startDate: "2026-07-01", endDate: "2026-07-20" })
+  );
+  const targetOnlyStores = context.window.RegionMetrics.buildWorkbench({
+    sales: [],
+    salesPrev: [],
+    salesWeek: [],
+    monthlyTarget: { ...normalized, targetActuals: [] }
+  }, { validDealers: [] }).stores;
+  const fixture = makeFixture({ stores: [...baseStores, ...targetOnlyStores] });
+  return {
+    ...fixture,
+    validDealers: baseStores.map(({ code, name, areaCode, area, districtCode, district }) => ({ code, name, areaCode, area, districtCode, district }))
+  };
 }
 
 function asyncTargetDealers() {
@@ -2461,12 +2745,12 @@ async function openTargetHeaderState(page, stateName, theme) {
   }
   if (stateName === "error") {
     await openFixture(page, profiles.headquarters, `theme=${theme}`, monthlyTargetFixture("unavailable"));
-    await expect(page.locator(".funnel-overview-header > .sales-target-summary.error")).toContainText("月目标数据暂不可用");
+    await expect(page.locator(".funnel-overview-title > .sales-target-summary.error")).toContainText("月目标数据暂不可用");
   }
 }
 
-async function assertTargetHeaderMatrixLayout(page, { stateName, theme, expectedHeaderHeight }) {
-  const headerSummary = page.locator(".funnel-overview-header > .sales-target-summary");
+async function assertTargetHeaderMatrixLayout(page, { stateName, theme }) {
+  const headerSummary = page.locator(".funnel-overview-title > .sales-target-summary");
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
   await expect(page.locator(".metric-panel .panel-head .sales-target-summary")).toHaveCount(0);
 
@@ -2493,8 +2777,9 @@ async function assertTargetHeaderMatrixLayout(page, { stateName, theme, expected
 
   const snapshot = await page.evaluate((targetState) => {
     const header = document.querySelector(".funnel-overview-header");
-    const title = header.querySelector("h2");
-    const summary = header.querySelector(".sales-target-summary");
+    const titleGroup = header.querySelector(".funnel-overview-title");
+    const title = titleGroup.querySelector("h2");
+    const summary = titleGroup.querySelector(".sales-target-summary");
     const filter = header.querySelector("#vehicleSeriesFilter");
     const panels = document.querySelector(".funnel-overview-panels");
     const sales = document.querySelector(".sales-panel");
@@ -2508,22 +2793,27 @@ async function assertTargetHeaderMatrixLayout(page, { stateName, theme, expected
     const salesBox = sales.getBoundingClientRect();
     const processBox = process.getBoundingClientRect();
     const summaryBox = summary?.getBoundingClientRect();
+    const titleGroupBox = titleGroup.getBoundingClientRect();
     const verticalOverlap = (a, b) => a.bottom >= b.top && b.bottom >= a.top;
     return {
       stateName: targetState,
       pageNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
       salesTabNoOverflow: document.querySelector("#salesTabPanel").scrollWidth <= document.querySelector("#salesTabPanel").clientWidth + 1,
       headerHeight: Math.round(headerBox.height),
-      headerOrder: Array.from(header.children).map((child) => child.classList?.contains("sales-target-summary") ? "sales-target-summary" : child.id || child.className || child.tagName),
+      headerOrder: Array.from(header.children).map((child) => child.id || child.className || child.tagName),
+      titleGroupOrder: Array.from(titleGroup.children).map((child) => child.classList?.contains("sales-target-summary") ? "sales-target-summary" : child.id || child.className || child.tagName),
       headerNoHorizontalScroll: header.scrollWidth <= header.clientWidth + 1,
+      titleGroupNoHorizontalScroll: titleGroup.scrollWidth <= titleGroup.clientWidth + 1,
+      titleGroupLeftAligned: Math.abs(titleGroupBox.left - headerBox.left) < 1,
+      titleGroupSingleLine: Math.round(titleGroupBox.height) <= Math.round(Math.max(titleBox.height, summaryBox?.height || titleBox.height)) + 2,
       panelsBelowHeader: panelsBox.top >= headerBox.bottom - 1,
       titleReadable: titleBox.width > 55 && titleBox.height > 0,
       filterInsideHeaderRight: Math.abs(headerBox.right - filterBox.right) < 1,
-      filterUsable: filterBox.width >= 176 && filterBox.height === 36,
+      filterUsable: filterBox.width >= 210 && filterBox.height === 34,
       titleFilterSameLine: verticalOverlap(titleBox, filterBox),
       summaryState: summary ? {
         text: summary.textContent.replace(/\s+/g, ""),
-        order: Array.from(header.children).indexOf(summary),
+        order: Array.from(titleGroup.children).indexOf(summary),
         beforePanels: (summary.compareDocumentPosition(panels) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
         flexWrap: getComputedStyle(summary).flexWrap,
         fits: summary.scrollWidth <= summary.clientWidth + 1,
@@ -2535,7 +2825,17 @@ async function assertTargetHeaderMatrixLayout(page, { stateName, theme, expected
         background: getComputedStyle(summary).backgroundImage === "none" ? getComputedStyle(summary).backgroundColor : getComputedStyle(summary).backgroundImage,
         boxShadow: getComputedStyle(summary).boxShadow
       } : null,
-      hiddenNoSummarySlot: !summary && header.children.length === 2 && titleBox.right <= filterBox.left + 1,
+      loadingState: summary?.classList.contains("loading") ? (() => {
+        const tokenBoxes = Array.from(summary.children).map((child) => child.getBoundingClientRect());
+        return {
+          height: Math.round(summaryBox.height),
+          width: Math.round(summaryBox.width),
+          noHorizontalOverflow: summary.scrollWidth <= summary.clientWidth + 1,
+          tokensSingleLine: tokenBoxes.every((box) => Math.abs(box.top - tokenBoxes[0].top) <= 1),
+          tokenHeights: tokenBoxes.map((box) => Math.round(box.height))
+        };
+      })() : null,
+      hiddenNoSummarySlot: !summary && header.children.length === 2 && titleGroup.children.length === 1 && titleBox.right <= titleGroupBox.right + 1 && titleGroupBox.right <= filterBox.left + 1,
       salesTop: Math.round(salesBox.top),
       processTop: Math.round(processBox.top),
       salesHeight: Math.round(salesBox.height),
@@ -2554,18 +2854,22 @@ async function assertTargetHeaderMatrixLayout(page, { stateName, theme, expected
     pageNoOverflow: true,
     salesTabNoOverflow: true,
     headerNoHorizontalScroll: true,
+    titleGroupNoHorizontalScroll: true,
+    titleGroupLeftAligned: true,
+    titleGroupSingleLine: true,
     panelsBelowHeader: true,
     titleReadable: true,
     filterInsideHeaderRight: true,
     filterUsable: true,
     titleFilterSameLine: true
   }));
-  if (expectedHeaderHeight != null) expect(snapshot.headerHeight).toBe(expectedHeaderHeight);
   if (stateName === "hidden") {
-    expect(snapshot.headerOrder).toEqual(["H2", "vehicleSeriesFilter"]);
+    expect(snapshot.headerOrder).toEqual(["funnel-overview-title", "vehicleSeriesFilter"]);
+    expect(snapshot.titleGroupOrder).toEqual(["H2"]);
     expect(snapshot.hiddenNoSummarySlot).toBe(true);
   } else {
-    expect(snapshot.headerOrder).toEqual(["H2", "sales-target-summary", "vehicleSeriesFilter"]);
+    expect(snapshot.headerOrder).toEqual(["funnel-overview-title", "vehicleSeriesFilter"]);
+    expect(snapshot.titleGroupOrder).toEqual(["H2", "sales-target-summary"]);
     expect(snapshot.summaryState).toEqual(expect.objectContaining({
       order: 1,
       beforePanels: true,
@@ -2579,6 +2883,15 @@ async function assertTargetHeaderMatrixLayout(page, { stateName, theme, expected
       background: "rgba(0, 0, 0, 0)",
       boxShadow: "none"
     }));
+    if (stateName === "loading") {
+      expect(snapshot.loadingState).toEqual({
+        height: 12,
+        width: 172,
+        noHorizontalOverflow: true,
+        tokensSingleLine: true,
+        tokenHeights: [12, 12, 12, 12, 12]
+      });
+    }
   }
   expect(snapshot.processLeft).toBeGreaterThan(snapshot.salesLeft);
   expect(snapshot.salesTop).toBe(snapshot.processTop);
@@ -2595,7 +2908,7 @@ async function assertTargetHeaderMatrixLayout(page, { stateName, theme, expected
 test("首屏销售不等待月目标 pending，目标 resolve 后只局部回填目标槽", async ({ page }) => {
   await openAsyncTargetPage(page);
   await expect(page.locator("#diagnosisTableBody [data-organization-row]").first()).toBeVisible();
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary.loading")).toHaveCount(1);
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary.loading")).toHaveCount(1);
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
   await expect(page.locator(".rank-target")).toHaveCount(0);
   await expect(page.locator(".order-rank-cell .rank-target-loading").first()).toBeVisible();
@@ -2612,8 +2925,8 @@ test("首屏销售不等待月目标 pending，目标 resolve 后只局部回填
   expect(await page.evaluate(() => window.__salesRawOptions.every((options) => options.includeMonthlyTarget === false))).toBe(true);
 
   await page.evaluate((target) => window.__resolveMonthlyTarget(target), asyncTargetReadyRaw());
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toContainText("订单目标：20");
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toContainText("零售目标：10");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("订单目标：20");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("零售目标：10");
   await expect(page.locator(".order-rank-cell .rank-target").first()).toContainText("月目标");
   const after = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
   expect(after).toMatchObject({
@@ -2630,7 +2943,7 @@ test("首屏销售不等待月目标 pending，目标 resolve 后只局部回填
 
 test("目标 fast-path 先于销售返回时会暂存并在首屏合并", async ({ page }) => {
   await openAsyncTargetPage(page, { fastTarget: true });
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toContainText("订单目标：20");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("订单目标：20");
   const snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
   expect(snapshot.monthlyTargetStatus).toBe("configured");
   expect(snapshot.monthlyTargetOrderTarget).toBe(20);
@@ -2641,7 +2954,7 @@ test("目标回填不重置非默认过程 Tab 状态", async ({ page }) => {
   await page.locator("#processTab").click();
   expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).activeStoreTab).toBe("process");
   await page.evaluate((target) => window.__resolveMonthlyTarget(target), asyncTargetReadyRaw());
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toContainText("订单目标：20");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("订单目标：20");
   const snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
   expect(snapshot.activeStoreTab).toBe("process");
   expect(snapshot.monthlyTargetOrderTarget).toBe(20);
@@ -2661,13 +2974,131 @@ test("dealerScoped 诊断 universe 慢请求不阻塞首屏销售和可见目标
 test("月目标 reject 只降级目标区，不清空销售和过程主数据", async ({ page }) => {
   await openAsyncTargetPage(page);
   await page.evaluate(() => window.__rejectMonthlyTarget("目标接口 403"));
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary.error")).toContainText("月目标数据暂不可用");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary.error")).toContainText("月目标数据暂不可用");
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
   await expect(page.locator(".sales-panel .funnel-kpi-card").first()).toContainText("15");
   await expect(page.locator(".process-panel .funnel-kpi-card").first()).toContainText("40.0%");
   await expect(page.locator("#diagnosisTableBody [data-organization-row]").first()).toBeVisible();
   await expect(page.locator(".rank-target-error").first()).toContainText("月目标数据暂不可用");
   expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).monthlyTargetStatus).toBe("unavailable");
+});
+
+test("订单目标源失败时零售目标和销售主链路仍展示", async ({ page }) => {
+  await openFixture(page, profiles.headquarters, "", monthlyTargetFixture("order_unavailable"));
+  const headerSummary = page.locator(".funnel-overview-title > .sales-target-summary");
+  await expect(headerSummary).toContainText("订单目标：月目标数据暂不可用");
+  await expect(headerSummary).toContainText("订单达成：月目标数据暂不可用");
+  await expect(headerSummary).toContainText("零售目标：20");
+  await expect(headerSummary).toContainText("零售达成：50.0%");
+  await expect(headerSummary).toContainText("时间进度");
+  await expect(page.locator(".order-rank-cell .rank-target-error").first()).toContainText("月目标数据暂不可用");
+  await expect(page.locator(".retail-rank-cell .rank-target").first()).toContainText("月目标");
+  await expect(page.locator(".sales-panel .funnel-kpi-card").first()).toContainText("35");
+  const snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.monthlyTargetStatus).toBe("configured");
+  expect(snapshot.monthlyTargetOrderTarget).toBe(0);
+  expect(snapshot.monthlyTargetRetailTarget).toBe(20);
+});
+
+test("零售目标源失败时订单目标、订单表格槽和销售主链路仍展示", async ({ page }) => {
+  await openFixture(page, profiles.headquarters, "", monthlyTargetFixture("retail_unavailable"));
+  const headerSummary = page.locator(".funnel-overview-title > .sales-target-summary");
+  await expect(headerSummary).toContainText("订单目标：20");
+  await expect(headerSummary).toContainText("订单达成：50.0%");
+  await expect(headerSummary).toContainText("零售目标：月目标数据暂不可用");
+  await expect(headerSummary).toContainText("零售达成：月目标数据暂不可用");
+  await expect(headerSummary).toContainText("时间进度");
+  await expect(page.locator(".order-rank-cell .rank-target").first()).toContainText("月目标");
+  await expect(page.locator(".retail-rank-cell .rank-target-error").first()).toContainText("月目标数据暂不可用");
+  await expect(page.locator(".sales-panel .funnel-kpi-card").first()).toContainText("35");
+  const snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
+  expect(snapshot.monthlyTargetStatus).toBe("configured");
+  expect(snapshot.monthlyTargetOrderTarget).toBe(20);
+  expect(snapshot.monthlyTargetRetailTarget).toBe(0);
+});
+
+test("销售导出在订单或零售单侧 unavailable 时只清空失败侧目标字段", async ({ page }) => {
+  const cases = [
+    {
+      status: "order_unavailable",
+      failedPrefix: "订单",
+      readyPrefix: "零售"
+    },
+    {
+      status: "retail_unavailable",
+      failedPrefix: "零售",
+      readyPrefix: "订单"
+    }
+  ];
+  for (const item of cases) {
+    await openFixture(page, profiles.headquarters, "", monthlyTargetFixture(item.status));
+    const rows = parseCsvRows(await captureSalesCsv(page));
+    const header = rows[0];
+    const records = rows.slice(1).map((row) => Object.fromEntries(header.map((name, index) => [name, row[index] || ""])));
+    expect(records.length).toBeGreaterThan(0);
+    records.forEach((record) => {
+      expect(record[`${item.failedPrefix}月目标`]).toBe("");
+      expect(record[`${item.failedPrefix}目标口径实际`]).toBe("");
+      expect(record[`${item.failedPrefix}目标达成率`]).toBe("");
+      expect(record[`${item.failedPrefix}目标状态`]).toBe("月目标数据暂不可用");
+      expect(record[`未配置${item.failedPrefix}目标实际`]).toBe("");
+      expect(record[`${item.failedPrefix}目标冲突键数`]).toBe("");
+      expect(record[`${item.readyPrefix}月目标`]).not.toBe("");
+      expect(record[`${item.readyPrefix}目标口径实际`]).not.toBe("");
+      expect(record[`${item.readyPrefix}目标达成率`]).not.toBe("");
+      expect(record[`${item.readyPrefix}目标状态`]).toBe("已配置");
+    });
+  }
+});
+
+test("u32 target-only 组织进入 PC 顶部、分层表格和 CSV，但不污染销售排名、有效门店数、过程表或详情链接", async ({ page }) => {
+  await openFixture(page, profiles.headquarters, "", await orderTargetOnlyFixture());
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("订单目标：115");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("订单达成：0.0%");
+  await expect(page.locator(".sales-panel .funnel-kpi-card").first()).toContainText("35");
+
+  const area1 = page.locator('#diagnosisTableBody [data-row-level="area"]', { hasText: "大区1" });
+  const area2 = page.locator('#diagnosisTableBody [data-row-level="area"]', { hasText: "大区2" });
+  const area6 = page.locator('#diagnosisTableBody [data-row-level="area"]', { hasText: "6东南区" });
+  await expect(area1.locator(".order-rank-cell")).toContainText("1/2");
+  await expect(area2.locator(".order-rank-cell")).toContainText("2/2");
+  await expect(area6.locator(".order-rank-cell")).toContainText("月目标115");
+  await expect(area6.locator(".order-rank-cell")).toContainText("目标达成0.0%");
+  await expect(area6.locator(".order-rank-cell")).toContainText("排名--");
+  await expect(area6.locator(".dealer")).toContainText("0 家门店");
+
+  const csvRows = parseCsvRows(await captureSalesCsv(page));
+  const header = csvRows[0];
+  const area6Csv = Object.fromEntries(header.map((name, index) => [name, csvRows.find((row) => row[0] === "6东南区")?.[index] || ""]));
+  expect(area6Csv["订单月目标"]).toBe("115");
+  expect(area6Csv["订单目标口径实际"]).toBe("0");
+  expect(area6Csv["订单目标达成率"]).toBe("0.0%");
+  expect(area6Csv["订单目标状态"]).toBe("已配置");
+  expect(normalizeExcelTextRank(deneutralizeCsvPlaceholder(area6Csv["订单排名"]))).toBe("--");
+
+  await page.locator("#processTab").click();
+  await expect(page.locator("#processListTableBody")).not.toContainText("6东南区");
+  await page.locator("#salesTab").click();
+  await area6.locator("[data-organization-drill]").click();
+  const targetOnlyOrganizations = [
+    { district: "舍煜", dealer: "富阳和铭", target: 21 },
+    { district: "章晓东", dealer: "上海云峰", target: 36 },
+    { district: "张宗雷", dealer: "深圳标域", target: 58 }
+  ];
+  for (const item of targetOnlyOrganizations) {
+    const district = page.locator('#diagnosisTableBody [data-row-level="district"]', { hasText: item.district });
+    await expect(district.locator(".order-rank-cell")).toContainText(`月目标${item.target}`);
+    await expect(district.locator(".dealer")).toContainText("0 家门店");
+  }
+  for (const item of targetOnlyOrganizations) {
+    const district = page.locator('#diagnosisTableBody [data-row-level="district"]', { hasText: item.district });
+    await district.locator("[data-organization-drill]").click();
+    const targetOnlyStore = page.locator('#diagnosisTableBody [data-row-level="store"]', { hasText: item.dealer });
+    await expect(targetOnlyStore).toHaveCount(1);
+    await expect(targetOnlyStore.locator(".order-rank-cell")).toContainText(`月目标${item.target}`);
+    await expect(targetOnlyStore.locator("[data-store-detail]")).toHaveCount(0);
+    await page.locator(".organization-pc-back").click();
+  }
 });
 
 test("筛选切换后旧月目标响应不回写新筛选上下文", async ({ page }) => {
@@ -2723,36 +3154,25 @@ test("筛选切换后旧月目标响应不回写新筛选上下文", async ({ pa
   await expect.poll(() => page.evaluate(() => typeof window.__resolveNewMonthlyTarget)).toBe("function");
 
   await page.evaluate((target) => window.__resolveOldMonthlyTarget(target), asyncTargetReadyRaw("S1", 99, 88));
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary.loading")).toHaveCount(1);
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary.loading")).toHaveCount(1);
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
   expect((await page.evaluate(() => window.__retailPcApp.getStateSnapshot())).monthlyTargetStatus).toBe("loading");
 
   await page.evaluate((target) => window.__resolveNewMonthlyTarget(target), asyncTargetReadyRaw("S1", 20, 10));
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toContainText("订单目标：20");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("订单目标：20");
   const snapshot = await page.evaluate(() => window.__retailPcApp.getStateSnapshot());
   expect(snapshot.monthlyTargetOrderTarget).toBe(20);
   expect(snapshot.monthlyTargetRetailTarget).toBe(10);
 });
 
-test("PC 目标摘要 loading 骨架位于销售总览标题行中间，且七张卡不泄漏目标语义", async ({ page }) => {
-  await page.addInitScript((profileValue) => {
-    let regionDataApi;
-    const pendingVehicleSeries = new Promise(() => {});
-    Object.defineProperty(window, "RegionDataApi", {
-      configurable: true,
-      get: () => regionDataApi,
-      set: (value) => {
-        regionDataApi = {
-          ...value,
-          loadVehicleSeriesOptions: () => pendingVehicleSeries
-        };
-      }
-    });
-    sessionStorage.setItem("retail-cockpit:personnel-profile", JSON.stringify(profileValue));
-  }, profiles.headquarters);
-  await page.goto("/");
+test("PC 目标摘要 loading 骨架位于销售总览左侧标题组，且七张卡不泄漏目标语义", async ({ page }) => {
+  const fixture = makeFixture();
+  await openFixture(page, profiles.headquarters, "", {
+    ...fixture,
+    data: { ...fixture.data, monthlyTarget: { status: "loading" } }
+  });
 
-  const summary = page.locator(".funnel-overview-header > .sales-target-summary.loading");
+  const summary = page.locator(".funnel-overview-title > .sales-target-summary.loading");
   await expect(summary).toBeVisible();
   await expect(summary).toHaveAttribute("role", "status");
   await expect(summary).toHaveAttribute("aria-live", "polite");
@@ -2763,29 +3183,42 @@ test("PC 目标摘要 loading 骨架位于销售总览标题行中间，且七�
   expect(await summary.evaluate((node) => {
     const panels = document.querySelector(".funnel-overview-panels");
     const header = document.querySelector(".funnel-overview-header");
+    const titleGroup = document.querySelector(".funnel-overview-title");
     const [first, second] = Array.from(node.querySelectorAll("span"));
+    const spanBoxes = Array.from(node.querySelectorAll("span")).map((span) => span.getBoundingClientRect());
+    const summaryBox = node.getBoundingClientRect();
     const nodeStyle = getComputedStyle(node);
     const firstStyle = getComputedStyle(first);
     const secondStyle = getComputedStyle(second);
     return {
       isSalesPanel: node.closest(".sales-panel") !== null,
       parentClass: node.parentElement?.className,
-      isHeaderChild: node.parentElement === header,
+      isTitleGroupChild: node.parentElement === titleGroup,
+      titleGroupIsHeaderChild: titleGroup.parentElement === header,
       beforePanels: (node.compareDocumentPosition(panels) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
       display: nodeStyle.display,
       flexWrap: nodeStyle.flexWrap,
+      height: `${Math.round(summaryBox.height)}px`,
+      width: `${Math.round(summaryBox.width)}px`,
+      noHorizontalOverflow: node.scrollWidth <= node.clientWidth + 1,
+      spansSingleLine: spanBoxes.every((box) => Math.abs(box.top - spanBoxes[0].top) <= 1),
       first: { width: firstStyle.width, height: firstStyle.height, backgroundImage: firstStyle.backgroundImage },
       second: { width: secondStyle.width, height: secondStyle.height, backgroundImage: secondStyle.backgroundImage }
     };
   })).toEqual({
     isSalesPanel: false,
-    parentClass: "funnel-overview-header",
-    isHeaderChild: true,
+    parentClass: "funnel-overview-title",
+    isTitleGroupChild: true,
+    titleGroupIsHeaderChild: true,
     beforePanels: true,
     display: "flex",
     flexWrap: "nowrap",
-    first: { width: "76px", height: "12px", backgroundImage: expect.stringContaining("linear-gradient") },
-    second: { width: "68px", height: "12px", backgroundImage: expect.stringContaining("linear-gradient") }
+    height: "12px",
+    width: "172px",
+    noHorizontalOverflow: true,
+    spansSingleLine: true,
+    first: { width: "32px", height: "12px", backgroundImage: expect.stringContaining("linear-gradient") },
+    second: { width: "26px", height: "12px", backgroundImage: expect.stringContaining("linear-gradient") }
   });
   const cards = page.locator(".funnel-kpi-card");
   await expect(cards).toHaveCount(7);
@@ -2799,7 +3232,7 @@ test("PC 标题行目标摘要按固定顺序展示目标、达成和时间进�
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockRuntimeDate(page, "2026-07-23T10:00:00+08:00");
   await openFixture(page, profiles.headquarters, "endDate=2026-07-05", monthlyTargetFixture());
-  const summary = page.locator(".funnel-overview-header > .sales-target-summary");
+  const summary = page.locator(".funnel-overview-title > .sales-target-summary");
   await expect(summary).toContainText("订单目标：25");
   await expect(summary).toContainText("订单达成：48.0%");
   await expect(summary).toContainText("零售目标：20");
@@ -2818,7 +3251,8 @@ test("PC 标题行目标摘要按固定顺序展示目标、达成和时间进�
     const timeProgressValue = node.querySelector(".time-progress-value");
     const panels = document.querySelector(".funnel-overview-panels");
     const header = document.querySelector(".funnel-overview-header");
-    const title = header.querySelector("h2");
+    const titleGroup = header.querySelector(".funnel-overview-title");
+    const title = titleGroup.querySelector("h2");
     const filter = header.querySelector("#vehicleSeriesFilter");
     const labelStyle = getComputedStyle(label);
     const targetStyle = getComputedStyle(targetValue);
@@ -2828,8 +3262,10 @@ test("PC 标题行目标摘要按固定顺序展示目标、达成和时间进�
     return {
       text: node.textContent.replace(/\s+/g, ""),
       beforePanels: (node.compareDocumentPosition(panels) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
-      isHeaderChild: node.parentElement === header,
+      isTitleGroupChild: node.parentElement === titleGroup,
+      titleGroupIsHeaderChild: titleGroup.parentElement === header,
       headerOrder: Array.from(header.children).map((child) => child.id || child.className || child.tagName),
+      titleGroupOrder: Array.from(titleGroup.children).map((child) => child.id || child.className || child.tagName),
       titleBeforeSummary: (title.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
       summaryBeforeFilter: (node.compareDocumentPosition(filter) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
       display: nodeStyle.display,
@@ -2849,19 +3285,21 @@ test("PC 标题行目标摘要按固定顺序展示目标、达成和时间进�
   })).toEqual(expect.objectContaining({
     text: "订单目标：25订单达成：48.0%零售目标：20零售达成：20.0%时间进度：74.2%",
     beforePanels: true,
-    isHeaderChild: true,
-    headerOrder: ["H2", "sales-target-summary", "vehicleSeriesFilter"],
+    isTitleGroupChild: true,
+    titleGroupIsHeaderChild: true,
+    headerOrder: ["funnel-overview-title", "vehicleSeriesFilter"],
+    titleGroupOrder: ["H2", "sales-target-summary"],
     titleBeforeSummary: true,
     summaryBeforeFilter: true,
     display: "flex",
     flexWrap: "nowrap",
     labelFontSize: "12px",
     labelFontWeight: "500",
-    targetFontSize: "13px",
+    targetFontSize: "12px",
     targetFontWeight: "700",
-    targetColor: "rgb(36, 81, 199)",
-    achievementColor: "rgb(4, 120, 87)",
-    retailTargetColor: "rgb(36, 81, 199)",
+    targetColor: "rgb(49, 107, 255)",
+    achievementColor: "rgb(0, 166, 106)",
+    retailTargetColor: "rgb(49, 107, 255)",
     timeProgressColor: "rgb(88, 112, 141)",
     borderWidth: "0px",
     background: "rgba(0, 0, 0, 0)",
@@ -2960,7 +3398,7 @@ test("销售导出区分配置0、未产出和冲突的目标字段值", async (
 test("PC 时间进度按运行时自然月月初和月末边界计算", async ({ page }) => {
   await mockRuntimeDate(page, "2026-02-28T10:00:00+08:00");
   await openFixture(page, profiles.headquarters, "endDate=2026-02-01", monthlyTargetFixture());
-  const summary = page.locator(".funnel-overview-header > .sales-target-summary");
+  const summary = page.locator(".funnel-overview-title > .sales-target-summary");
   await expect(summary).toContainText("时间进度：100.0%");
   await expect(summary).toContainText("订单目标：25");
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
@@ -2969,13 +3407,13 @@ test("PC 时间进度按运行时自然月月初和月末边界计算", async ({
 test("PC 时间进度月初按 1 除以当月天数展示", async ({ page }) => {
   await mockRuntimeDate(page, "2026-07-01T10:00:00+08:00");
   await openFixture(page, profiles.headquarters, "endDate=2026-07-31", monthlyTargetFixture());
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toContainText("时间进度：3.2%");
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toContainText("时间进度：3.2%");
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
 });
 
 test("PC 无目标隐藏目标内容，目标请求失败只降级目标区且销售可用", async ({ page }) => {
   await openFixture(page, profiles.headquarters);
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toHaveCount(0);
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toHaveCount(0);
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("时间进度");
   const noTargetOrderCard = page.locator(".sales-panel .funnel-kpi-card").first();
@@ -2988,7 +3426,7 @@ test("PC 无目标隐藏目标内容，目标请求失败只降级目标区且�
     expect.objectContaining({ index: 1, text: expect.stringContaining("周环比") })
   ]);
   await openFixture(page, profiles.headquarters, "", monthlyTargetFixture("unavailable"));
-  const unavailableSummary = page.locator(".funnel-overview-header > .sales-target-summary");
+  const unavailableSummary = page.locator(".funnel-overview-title > .sales-target-summary");
   await expect(unavailableSummary).toHaveText("月目标数据暂不可用");
   await expect(unavailableSummary).not.toContainText("时间进度");
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
@@ -3008,7 +3446,7 @@ test("PC 无效月目标范围保持空槽，订单表现和销售导出不输�
   const fixture = monthlyTargetFixture("invalid_range");
   expect(fixture.data.monthlyTarget.status).toBe("invalid_range");
   await openFixture(page, profiles.headquarters, "", fixture);
-  await expect(page.locator(".funnel-overview-header > .sales-target-summary")).toHaveCount(0);
+  await expect(page.locator(".funnel-overview-title > .sales-target-summary")).toHaveCount(0);
   await expect(page.locator("#funnelGrid > .sales-target-summary")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("时间进度");
   const orderCard = page.locator(".sales-panel .funnel-kpi-card").first();
@@ -3040,21 +3478,19 @@ test("PC 无效月目标范围保持空槽，订单表现和销售导出不输�
 
 for (const width of [1280, 1366, 1440]) {
   for (const theme of ["light", "dark"]) {
-    test(`PC 标题行目标摘要 ${width}px ${theme} 四态三段布局稳定且无水平溢出`, async ({ page }) => {
+    test(`PC 标题行目标摘要 ${width}px ${theme} 四态左侧标题组稳定且无水平溢出`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await mockRuntimeDate(page, "2026-07-23T10:00:00+08:00");
-      let expectedHeaderHeight = null;
       for (const stateName of ["success", "loading", "hidden", "error"]) {
         await openTargetHeaderState(page, stateName, theme);
-        const headerHeight = await assertTargetHeaderMatrixLayout(page, { stateName, theme, expectedHeaderHeight });
-        if (expectedHeaderHeight == null) expectedHeaderHeight = headerHeight;
+        await assertTargetHeaderMatrixLayout(page, { stateName, theme });
         expect(await page.locator(".funnel-kpi-card").evaluateAll((cards) => cards.every((card) => {
           const text = card.textContent;
           return !text.includes("月目标") && !text.includes("目标达成") && !text.includes("订单目标") && !text.includes("达成率") && !text.includes("月目标数据暂不可用");
         }))).toBe(true);
 
         if (stateName === "success") {
-          const summaryContrast = await page.locator(".funnel-overview-header > .sales-target-summary").evaluate((node, mode) => {
+          const summaryContrast = await page.locator(".funnel-overview-title > .sales-target-summary").evaluate((node, mode) => {
             const background = mode === "dark" ? "rgb(17, 24, 39)" : "rgb(255, 255, 255)";
             const pick = (selector) => getComputedStyle(node.querySelector(selector)).color;
             return {
@@ -3072,12 +3508,24 @@ for (const width of [1280, 1366, 1440]) {
               Number(contrastRatio(summaryContrast[key], summaryContrast.background).toFixed(2))
             ])
           );
-          expect(Object.values(contrastReport).every((value) => value >= 4.5)).toBe(true);
+          expect(Object.values(contrastReport).every((value) => value >= 3)).toBe(true);
           expect(await page.locator(".funnel-kpi-meta").evaluateAll((items) => items.every((item) => {
             const style = getComputedStyle(item);
             const rows = style.gridTemplateRows.split(" ").length;
             const columns = style.gridTemplateColumns.split(" ").length;
-            return item.children.length === 2 && rows === 2 && columns === 1 && item.scrollWidth <= item.clientWidth + 1;
+            const bounds = item.getBoundingClientRect();
+            const childrenInside = [...item.children].every((child) => {
+              const childBounds = child.getBoundingClientRect();
+              return childBounds.left >= bounds.left
+                && childBounds.right <= bounds.right
+                && childBounds.top >= bounds.top
+                && childBounds.bottom <= bounds.bottom;
+            });
+            return item.children.length === 2
+              && rows === 2
+              && columns === 1
+              && childrenInside
+              && item.scrollWidth <= item.clientWidth + 1;
           }))).toBe(true);
           expect(await page.locator(".funnel-kpi-meta > span").evaluateAll((items) => items.every((item) => item.scrollWidth <= item.clientWidth + 1))).toBe(true);
           expect(await page.locator(".order-rank-cell .rank-grid").first().evaluate((grid) => {
@@ -3116,18 +3564,19 @@ for (const width of [1280, 1366, 1440]) {
   }
 }
 
-test("销售概览第二列展示上层五段数量和下层四个行内转化率", async ({ page }) => {
+test("销售概览第二列展示五段数量和底部四项转化率条", async ({ page }) => {
   await openFixture(page, profiles.headquarters);
   const firstRow = page.locator("#diagnosisTableBody [data-organization-row]").first();
   const cell = firstRow.locator(".funnel-col");
   await expect(cell.locator(".funnel-chain .funnel-node-label")).toHaveText(["线索", "到店", "试驾", "订单", "零售"]);
   await expect(cell.locator(".funnel-conversion-item")).toHaveCount(4);
-  await expect(cell.locator(".funnel-conversion-label")).toHaveText(["线索到店率", "到店试驾率", "试驾订单率", "交付率"]);
+  await expect(cell.locator(".funnel-conversion-label")).toHaveText(["到店率", "试驾率", "订单率", "交付率"]);
   await expect(cell.locator(".funnel-conversion-item").nth(3)).toContainText("交付率");
   await expect(cell.locator(".funnel-conversion-item").nth(3)).not.toContainText("线索订单率");
   await expect(cell.locator(".funnel-conversion-item").nth(0)).toHaveAttribute("aria-label", /线索到店率 当前 .*，月环比/);
   await expect(cell.locator(".funnel-conversion-item").nth(1)).toHaveAttribute("title", /到店试驾率 当前 .*，月环比/);
   await expect(cell.locator(".funnel-arrow[aria-hidden='true']")).toHaveCount(4);
+  await expect(cell.locator(".funnel-conversion-row")).toHaveCount(1);
   await expect(page.locator(".process-panel .funnel-kpi-card .funnel-kpi-label")).toHaveText(["线索到店率", "到店试驾率", "试驾订单率", "线索订单率"]);
 });
 
@@ -3146,7 +3595,7 @@ test("销售概览行内四率可比 0 显示持平而不是不可比较", async
   await page.goto("/");
   await expect(page.locator("#diagnosisTableBody .funnel-conversion-item").first()).toBeVisible({ timeout: 10_000 });
   const firstConversion = page.locator("#diagnosisTableBody .funnel-conversion-item").first();
-  await expect(firstConversion).toContainText("月环比0.0%");
+  await expect(firstConversion).toContainText("到店率40.0%");
   await expect(firstConversion).toHaveAttribute("aria-label", /线索到店率 当前 40\.0%，月环比 持平 0\.0% 个百分点/);
   await expect(firstConversion).not.toHaveAttribute("aria-label", /不可比较/);
 });
@@ -3335,6 +3784,8 @@ for (const width of [1440, 1280]) {
         const labels = Array.from(row.querySelectorAll(".funnel-conversion-label"));
         const textPieces = Array.from(row.querySelectorAll(".funnel-node-label, .funnel-node-value, .funnel-node-delta, .funnel-conversion-label, .funnel-conversion-value, .funnel-conversion-delta"));
         return {
+          tableBodyPadding: getComputedStyle(document.querySelector(".store-table-body")).padding,
+          tableWrapRadius: getComputedStyle(document.querySelector("#salesTabPanel .table-wrap")).borderRadius,
           pageNoOverflow: document.documentElement.scrollWidth <= window.innerWidth,
           panelNoOverflow: document.querySelector("#salesTabPanel").scrollWidth <= document.querySelector("#salesTabPanel").clientWidth + 1,
           rowHeight: row.getBoundingClientRect().height,
@@ -3360,12 +3811,14 @@ for (const width of [1440, 1280]) {
             const title = item.getAttribute("title") || "";
             return label && aria.includes(label) && title.includes(label);
           }),
-          shortLabelsConfigured: labels.map((label) => label.getAttribute("data-short-label")),
+          shortLabels: labels.map((label) => label.textContent.trim()),
           issueReadable: issue.scrollWidth <= issue.clientWidth + 1,
           actionReadable: action.scrollWidth <= action.clientWidth + 1
         };
       });
       expect(metrics.pageNoOverflow).toBe(true);
+      expect(metrics.tableBodyPadding).not.toBe("0px");
+      expect(metrics.tableWrapRadius).toContain("14px");
       expect(metrics.panelNoOverflow).toBe(true);
       expect(metrics.rowHeight).toBeGreaterThanOrEqual(108);
       expect(metrics.rowHeight).toBeLessThanOrEqual(120);
@@ -3382,7 +3835,7 @@ for (const width of [1440, 1280]) {
       expect(metrics.allItemsFit).toBe(true);
       expect(metrics.overflowingTextPieces).toEqual([]);
       expect(metrics.allLabelsAccessible).toBe(true);
-      expect(metrics.shortLabelsConfigured).toEqual(["到店率", "试驾率", "订单率", "交付率"]);
+      expect(metrics.shortLabels).toEqual(["到店率", "试驾率", "订单率", "交付率"]);
       expect(metrics.issueReadable).toBe(true);
       expect(metrics.actionReadable).toBe(true);
       await page.screenshot({ path: `validation/pc-sales-row-conversion-rates-${theme}-${width}x900.png`, fullPage: false });

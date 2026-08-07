@@ -1,0 +1,212 @@
+body,
+body[data-theme="light"] {
+  background: #f4f7fb;
+}
+
+body[data-theme="dark"],
+.app-shell[data-theme="dark"] {
+  --bg: #0b1423;
+  --card: #111d2f;
+  --soft: #17263b;
+  --line: #2a3b56;
+  --line-strong: #3f5576;
+  --text: #edf4ff;
+  --muted: #a8b7ca;
+  --rp-panel: rgba(17, 29, 47, 0.92);
+  --rp-panel-solid: #111d2f;
+  --rp-panel-soft: #17263b;
+  --rp-line: #2a3b56;
+  --rp-line-strong: #3f5576;
+  --rp-text: #edf4ff;
+  --rp-muted: #a8b7ca;
+  --rp-subtle: #7f91aa;
+  --rp-shadow: 0 18px 50px rgba(0, 0, 0, 0.26);
+  --rp-card-shadow: 0 14px 36px rgba(0, 0, 0, 0.22);
+  background: #0b1423;
+}
+
+.app-shell {
+  --rp-bg: #f4f7fb;
+  --rp-panel: rgba(255, 255, 255, 0.9);
+  --rp-panel-solid: #ffffff;
+  --rp-panel-soft: #f7faff;
+  --rp-line: #e4eaf3;
+  --rp-line-strong: #d8e1ee;
+  --rp-text: #172033;
+  --rp-muted: #6f7c91;
+  --rp-subtle: #8a97aa;
+  --rp-blue: #316bff;
+  --rp-cyan: #35c7d8;
+  --rp-green: #19a56f;
+  --rp-amber: #f59e0b;
+  --rp-red: #e5484d;
+  --rp-shadow: 0 18px 50px rgba(24, 39, 75, 0.08);
+  --rp-card-shadow: 0 14px 36px rgba(24, 39, 75, 0.06);
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;
+  background: var(--rp-bg);
+  color: var(--rp-text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.app-shell *,
+.app-shell *::before,
+.app-shell *::after {
+  letter-spacing: 0;
+}
+
+.filter-shell {
+  position: relative;
+  top: auto;
+  z-index: 30;
+  width: 100%;
+  max-width: none;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
+  margin: 0;
+  border-bottom: 1px solid rgba(228, 234, 243, 0.92);
+  background: linear-gradient(180deg, #eef6ff 0%, #eaf3fd 100%);
+  padding: 8px 28px 10px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: 124px 146px 146px 200px 300px;
+  justify-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filter-pill {
+  position: relative;
+  min-width: 0;
+  min-height: 38px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  border: 1px solid var(--rp-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 0 10px;
+  box-shadow: 0 8px 22px rgba(24, 39, 75, 0.04);
+}
+
+.filter-pill:nth-child(4),
+.filter-pill.date-filter-pill {
+  min-width: 0;
+}
+
+.filter-pill span,
+.refresh-note {
+  color: var(--rp-muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.filter-pill select,
+.filter-pill strong,
+.rp-header-date-trigger strong {
+  color: var(--rp-text);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 650;
+}
+
+.filter-pill select {
+  width: 100%;
+  appearance: none;
+}
+
+.filter-pill b,
+.rp-header-calendar-icon {
+  color: var(--rp-muted);
+}
+
+.rp-header-date-trigger {
+  min-height: 38px;
+  gap: 6px;
+  padding: 0;
+}
+
+.rp-header-date-trigger span:first-child,
+.rp-header-date-trigger em {
+  color: var(--rp-muted);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.rp-header-calendar-icon,
+.rp-header-calendar-icon svg {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+}
+
+.filter-pill:hover,
+.filter-pill:focus-within,
+.rp-header-date-field.is-open {
+  border-color: rgba(49, 107, 255, 0.36);
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(49, 107, 255, 0.08), 0 8px 22px rgba(24, 39, 75, 0.04);
+}
+
+.query-button {
+  width: 74px;
+  min-width: 74px;
+  min-height: 38px;
+  border-radius: 14px;
+  background: linear-gradient(100deg, var(--rp-blue), var(--rp-cyan));
+  padding: 0 16px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  box-shadow: 0 10px 26px rgba(49, 107, 255, 0.2);
+}
+
+.refresh-note {
+  align-self: center;
+  min-width: 184px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.refresh-button,
+.close-button {
+  width: 32px;
+  height: 32px;
+  border-color: var(--rp-line);
+  border-radius: 11px;
+  background: var(--rp-panel-solid);
+  color: var(--rp-muted);
+  font-size: 18px;
+}
+
+.page-title-band {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-bottom: 1px solid rgba(216, 225, 238, 0.75);
+  background: linear-gradient(180deg, #eaf3fd 0%, #eaf3fd 100%);
+  padding: 0 28px 16px;
+}
+
+.page-title-band h1 {
+  margin: 0;
+  color: var(--rp-text);
+  font-size: 30px;
+  line-height: 38px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.page-main {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  gap: 12px;
+  padding: 30px 28px 34px;
+}

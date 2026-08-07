@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>零售过程 · 多店销售诊断</title>
+  <script>
+    (function () {
+      var search = new URLSearchParams(window.location.search);
+      var theme = search.get("previewMode") === "dark" || search.get("theme") === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = theme;
+      if (search.get("fromApp") === "smartRetail-main") {
+        document.documentElement.dataset.embed = "smartRetail-main";
+      }
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css?v=20260708-sql2" />
+  <link rel="stylesheet" href="./calendar.css?v=20260708-sql2" />
+  <link rel="stylesheet" href="./components.css?v=20260708-sql2" />
+  <link rel="stylesheet" href="./visual-sync.css?v=20260806-series-filter-v244" />
+  <link rel="stylesheet" href="./iron-metrics.css?v=20260806-button-size-v234" />
+  <link rel="stylesheet" href="./small-order.css?v=20260806-toggle-icon-gap-v240" />
+  <link rel="stylesheet" href="./small-order-responsive.css?v=20260806-toggle-icon-gap-v240" />
+</head>
+<body data-theme="light">
+  <div id="captureRoot" class="app-shell" data-theme="light">
+    <header class="filter-shell" aria-label="父应用筛选上下文" aria-hidden="true" hidden>
+      <div id="filterBar" class="filter-bar"></div>
+      <button class="query-button" type="button">查询</button>
+      <div class="refresh-note">数据更新于 2026/07/05 15:37</div>
+      <button class="refresh-button" type="button" aria-label="刷新">↻</button>
+    </header>
+
+    <main class="page-main">
+      <section id="funnelGrid" class="funnel-module" aria-label="销售漏斗"></section>
+
+      <section class="store-tabs-panel" aria-label="门店表现">
+        <div class="store-tabs" role="tablist" aria-label="门店表现切换">
+          <button id="salesTab" class="store-tab active is-active" type="button" role="tab" aria-selected="true" aria-controls="salesTabPanel" data-store-tab="sales">销售概览</button>
+          <button id="processTab" class="store-tab" type="button" role="tab" aria-selected="false" aria-controls="processTabPanel" data-store-tab="process">过程分析</button>
+          <button id="ironTab" class="store-tab" type="button" role="tab" aria-selected="false" aria-controls="ironTabPanel" data-store-tab="iron">打铁指标</button>
+        </div>
+        <div class="store-tabs-card">
+          <div class="store-tabs-head">
+          <div class="store-panel-title">
+            <div class="store-title-line">
+              <h3 id="storeTableTitle">门店销售表现</h3>
+              <nav id="organizationBreadcrumb" class="organization-breadcrumb" aria-label="组织层级" hidden></nav>
+            </div>
+          </div>
+          <div class="store-tab-line">
+            <div id="ironMetricGroups" class="iron-metric-groups" role="tablist" aria-label="打铁指标分组" hidden>
+              <button id="ironGroupTab-invite" class="iron-group-tab is-active active" type="button" role="tab" aria-selected="true" aria-controls="ironGroupPanel" data-iron-group="invite">邀约指标 7</button>
+              <button id="ironGroupTab-trial" class="iron-group-tab" type="button" role="tab" aria-selected="false" aria-controls="ironGroupPanel" data-iron-group="trial">试驾指标 4</button>
+            </div>
+            <div id="ironDashboardLinks" class="iron-dashboard-links" aria-label="打铁外部看板" hidden>
+              <a class="iron-dashboard-link" href="https://rdata-pv.rauto.com/home/web-app/a3bc8c0765f8b419bb6a2845" target="_blank" rel="noopener noreferrer" data-iron-dashboard-link>打铁运营看板<span class="iron-dashboard-link-icon" aria-hidden="true" data-material-symbol="open_in_new"></span></a>
+              <a class="iron-dashboard-link" href="https://rdata-pv.rauto.com/home/web-app/g8cb96bf254ae4cde97b7d0f?pgId=s9dade39bd42b474c9476216&id=LBiJMLcuHa" target="_blank" rel="noopener noreferrer" data-quality-drive-dashboard-link>优质试驾看板<span class="iron-dashboard-link-icon" aria-hidden="true" data-material-symbol="open_in_new"></span></a>
+            </div>
+          </div>
+            <div class="store-panel-head-right">
+              <div id="salesHeaderTools" class="sales-header-tools is-visible" aria-label="销售表工具">
+                <button id="toggleAllDealersSales" class="all-dealers-btn" type="button" aria-label="查看当前范围全部经销商" hidden>查看所有经销商</button>
+                <button id="exportSales" class="export-btn" type="button">导出</button>
+            </div>
+            <div id="processHeaderTools" class="process-header-tools" aria-label="过程表工具">
+              <div id="processMetricToggles" class="toggle-group process-tab-controls" aria-label="指标展示切换" hidden>
+                <span class="toggle-label">指标展示</span>
+                <label class="check-toggle">
+                  <input id="toggleMonth" type="checkbox" checked />
+                  <span class="box"></span>
+                  <span>月环比</span>
+                </label>
+                <label class="check-toggle">
+                  <input id="toggleWeek" type="checkbox" checked />
+                  <span class="box"></span>
+                  <span>周环比</span>
+                </label>
+              </div>
+              <button id="toggleAllDealersProcess" class="all-dealers-btn" type="button" aria-label="查看当前范围全部经销商" hidden>查看所有经销商</button>
+              <button id="exportProcess" class="export-btn" type="button">导出</button>
+            </div>
+          </div>
+          </div>
+          <div class="store-table-body">
+          <section id="salesTabPanel" class="store-tab-panel tab-panel active is-active" role="tabpanel" aria-labelledby="salesTab">
+            <div class="table-wrap diagnosis-table-wrap">
+              <table class="sales-table">
+                <colgroup>
+                  <col class="col-dealer">
+                  <col class="col-sales-result">
+                  <col class="col-order">
+                  <col class="col-retail">
+                  <col class="col-issue">
+                  <col class="col-action">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th id="salesFirstColumn" class="sticky-col" title="经销商名称">经销商名称</th>
+                    <th class="funnel-col" title="销售结果（指标：月环比）">销售结果（指标：月环比）</th>
+                    <th title="订单表现">订单表现</th>
+                    <th title="零售表现">零售表现</th>
+                    <th class="issue-col" title="主问题 / 结果断点">主问题 / 结果断点</th>
+                    <th class="sticky-action" title="操作">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="diagnosisTableBody"></tbody>
+              </table>
+            </div>
+            <div id="salesPagination" class="store-pagination" data-store-pagination="sales" hidden>
+              <span class="store-pagination-info" data-pagination-info></span>
+              <div class="store-pager" data-pagination-pager aria-label="销售表现分页"></div>
+            </div>
+          </section>
+
+          <section id="processTabPanel" class="store-tab-panel tab-panel" role="tabpanel" aria-labelledby="processTab" hidden>
+            <p id="vehicleSeriesProcessNotice" class="vehicle-series-process-notice" hidden></p>
+            <div class="table-wrap process-list-table-wrap">
+              <table id="processMetricsTable" class="process-table show-both">
+              <colgroup>
+                <col class="dealer-col">
+                <col class="metric-col">
+                <col class="action-col">
+                <col class="metric-col">
+                <col class="metric-col">
+                <col class="metric-col">
+                <col class="metric-col">
+                <col class="metric-col">
+                <col class="metric-col">
+                <col class="metric-col">
+                <col class="metric-col">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th id="processFirstColumn" class="sticky-col" rowspan="2" title="经销商名称">经销商名称</th>
+                  <th class="group-head" colspan="5" title="邀约">邀约</th>
+                  <th class="group-head group-divider-start" colspan="4" title="试驾接待">试驾接待</th>
+                  <th class="sticky-action" rowspan="2" title="操作">操作</th>
+                </tr>
+                <tr>
+                  <th class="metric-head" title="线索到店率"><span class="head-with-info">线索到店率</span></th>
+                  <th class="metric-head" title="零钩子率"><span class="head-with-info">零钩子率</span></th>
+                  <th class="metric-head" title="未锁定时间率"><span class="head-with-info">未锁定时间率</span></th>
+                  <th class="metric-head" title="报价承接不足率"><span class="head-with-info">报价承接不足率</span></th>
+                  <th class="metric-head" title="竞品比较转化不足率"><span class="head-with-info">竞品比较转化不足率</span></th>
+                  <th class="metric-head group-divider-start" title="试驾订单率"><span class="head-with-info">试驾订单率</span></th>
+                  <th class="metric-head" title="版本未推荐率"><span class="head-with-info">版本未推荐率</span></th>
+                  <th class="metric-head" title="顾虑跳过率"><span class="head-with-info">顾虑跳过率</span></th>
+                  <th class="metric-head" title="竞品回避及贬低率"><span class="head-with-info">竞品回避及贬低率</span></th>
+                </tr>
+              </thead>
+              <tbody id="processListTableBody"></tbody>
+            </table>
+            </div>
+            <div id="processPagination" class="store-pagination" data-store-pagination="process" hidden>
+              <span class="store-pagination-info" data-pagination-info></span>
+              <div class="store-pager" data-pagination-pager aria-label="过程表现分页"></div>
+            </div>
+          </section>
+          <section id="ironTabPanel" class="store-tab-panel tab-panel" role="tabpanel" aria-labelledby="ironTab" hidden>
+            <div id="ironMetricsRoot" class="iron-metrics-root"></div>
+            <div id="ironPagination" class="store-pagination" data-store-pagination="iron" hidden>
+              <span class="store-pagination-info" data-pagination-info></span>
+              <div class="store-pager" data-pagination-pager aria-label="打铁指标分页"></div>
+            </div>
+          </section>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./runtime-config.js?v=20260716-env1"></script>
+  <script src="./vehicle-series.js?v=20260722-vehicle-multi1"></script>
+  <script src="./utils.js?v=20260722-vehicle-multi1"></script>
+  <script src="./national-scope.js?v=20260715-scope1"></script>
+  <script src="./organization-view.js?v=20260729-empty-role-hq-v205"></script>
+  <script src="./organization-scope.js?v=20260716-scope1"></script>
+  <script src="./data-api.js?v=20260727-vehicle-linkage1"></script>
+  <script src="./small-order-config.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-contract.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-model.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-api.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-view.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./iron-metrics-contract.js?v=20260731-iron-export-v213"></script>
+  <script src="./iron-metrics-model.js?v=20260731-iron-export-v213"></script>
+  <script src="./iron-metrics-api.js?v=20260731-iron-export-v213"></script>
+  <script src="./iron-metrics-view.js?v=20260731-iron-export-v213"></script>
+  <script src="./filter-api.js?v=20260729-dealer-sql-v208"></script>
+  <script src="./filter-ui.js?v=20260708-sql2"></script>
+  <script src="./metrics.js?v=20260723-target-async1"></script>
+  <script src="./tracking.js?v=20260722-vehicle-multi1"></script>
+  <script src="./capture.js?v=20260722-vehicle-multi1"></script>
+  <script src="./demo-fixture.js?v=20260806-standalone-demo-v237"></script>
+  <script src="./app.js?v=20260731-iron-export-v213"></script>
+</body>
+</html>

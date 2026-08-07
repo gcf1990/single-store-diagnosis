@@ -31,8 +31,30 @@
     const rawUserType = profile.marketing_userType;
     const rawOrgType = profile.marketing_orgType;
     const userType = text(rawUserType);
-    if (rawUserType == null || (typeof rawUserType === "string" && !userType)) {
-      return { ok: true, role: "headquarters", label: "总部", profile };
+    const hasUserType = rawUserType != null && (!(typeof rawUserType === "string") || Boolean(userType));
+    const hasOrgType = rawOrgType != null && (!(typeof rawOrgType === "string") || Boolean(text(rawOrgType)));
+    const resolveOrgTypeRole = () => {
+      if (typeof rawOrgType !== "string") return { ok: false, role: "unknown", label: "未知角色", reason: "marketing_orgType 类型无效", profile };
+      const orgType = rawOrgType.trim().toUpperCase();
+      if (!orgType) return { ok: false, role: "unknown", label: "未知角色", reason: "marketing_orgType 缺失", profile };
+      if (orgType === "MAC") return { ok: true, role: "district", label: "小区", profile };
+      if (orgType === "RFS") return { ok: true, role: "region", label: "大区", profile };
+      if (orgType === "HQ") return { ok: true, role: "headquarters", label: "总部", profile };
+      if (userType === "4") {
+        return {
+          ok: true,
+          role: "headquarters",
+          label: "总部",
+          compatibility: true,
+          inferred: true,
+          reason: `marketing_userType=4 且 marketing_orgType=${orgType} 未识别，按兼容总部候选态加载`,
+          profile
+        };
+      }
+      return { ok: false, role: "unknown", label: "未知角色", reason: "marketing_orgType 不在已配置范围", profile };
+    };
+    if (!hasUserType) {
+      return hasOrgType ? resolveOrgTypeRole() : { ok: true, role: "headquarters", label: "总部", inferred: true, reason: "marketing_userType 和 marketing_orgType 双空，按总部入口加载", profile };
     }
     if (!(["string", "number"].includes(typeof rawUserType)) || (typeof rawUserType === "number" && !Number.isFinite(rawUserType))) {
       return { ok: false, role: "unknown", label: "未知角色", reason: "marketing_userType 类型无效", profile };
@@ -40,12 +62,7 @@
     if (userType === "2") return { ok: true, role: "sales_director", label: "销售总监", profile };
     if (userType === "6") return { ok: true, role: "investor", label: "投资人", profile };
     if (userType !== "4") return { ok: false, role: "unknown", label: "未知角色", reason: "marketing_userType 不在已配置范围", profile };
-    if (typeof rawOrgType !== "string") return { ok: false, role: "unknown", label: "未知角色", reason: "marketing_orgType 类型无效", profile };
-    const orgType = rawOrgType.trim().toUpperCase();
-    if (!orgType) return { ok: false, role: "unknown", label: "未知角色", reason: "marketing_orgType 缺失", profile };
-    if (orgType === "MAC") return { ok: true, role: "district", label: "小区", profile };
-    if (orgType === "RFS") return { ok: true, role: "region", label: "大区", profile };
-    return { ok: true, role: "headquarters", label: "总部", profile };
+    return resolveOrgTypeRole();
   }
 
   function resolveEntryLevel(role, params = {}) {
@@ -105,7 +122,7 @@
     result.conflictKeys = number(result.order.conflictKeys) + number(result.retail.conflictKeys);
     result.hasTarget = result.order.hasTarget || result.retail.hasTarget;
     result.validDealerMissingRows = Math.max(number(result.order.validDealerMissingRows), number(result.retail.validDealerMissingRows));
-    result.status = result.order.status === "unavailable" || result.retail.status === "unavailable"
+    result.status = result.order.status === "unavailable" && result.retail.status === "unavailable"
       ? "unavailable"
       : result.hasTarget ? "configured" : result.order.status === "non_mg" || result.retail.status === "non_mg" ? "non_mg" : "no_target";
     result.error = result.order.error || result.retail.error || "";
@@ -184,19 +201,50 @@
     return { code: text(store.code), name: text(store.name) || "未知门店" };
   }
 
+  function targetMatchesOrganization(store, candidate, level) {
+    if (store.targetOnly !== true) return false;
+    const sourceCode = level === "area" ? text(store.sourceAreaCode) : level === "district" ? text(store.sourceDistrictCode) : text(store.realDealerCode);
+    const sourceName = level === "area" ? text(store.area) : level === "district" ? text(store.district) : text(store.name);
+    if (sourceCode && sourceCode === text(candidate.code)) return true;
+    return Boolean(sourceName && sourceName === text(candidate.name));
+  }
+
+  function targetMatchesStore(target, store) {
+    if (!targetMatchesOrganization(target, { code: store.code, name: store.name }, "store")) return false;
+    return targetMatchesOrganization(target, { code: store.areaCode, name: store.area }, "area")
+      && targetMatchesOrganization(target, { code: store.districtCode, name: store.district }, "district");
+  }
+
   function aggregateStores(stores, level) {
-    if (level === "store") return (stores || []).map((store) => ({ ...store, level, stores: [store], monthlyTarget: finalizeTarget(store.monthlyTarget || sumTarget([store])) }));
+    if (level === "store") {
+      const rows = [];
+      const standardRows = (stores || []).filter((store) => store.targetOnly !== true);
+      standardRows.forEach((store) => rows.push({ ...store, level, stores: [store], validStoreCount: 1, targetOnly: false }));
+      (stores || []).filter((store) => store.targetOnly === true).forEach((target) => {
+        const match = rows.find((row) => targetMatchesStore(target, row));
+        if (match) match.stores.push(target);
+        else rows.push({ ...target, level, stores: [target], validStoreCount: 0, targetOnly: true });
+      });
+      return rows.map((row) => ({ ...row, monthlyTarget: finalizeTarget(sumTarget(row.stores)) }));
+    }
     const groups = new Map();
-    (stores || []).forEach((store) => {
+    const addToGroup = (store, preferredGroup) => {
       const identity = groupIdentity(store, level);
       if (!identity.code) return;
       const key = `${level}:${identity.code}`;
-      const group = groups.get(key) || { ...identity, level, area: store.area, areaCode: store.areaCode, district: level === "district" ? store.district : "", districtCode: level === "district" ? store.districtCode : "", stores: [] };
+      const group = preferredGroup || groups.get(key) || { ...identity, level, area: store.area, areaCode: store.areaCode, district: level === "district" ? store.district : "", districtCode: level === "district" ? store.districtCode : "", stores: [] };
       group.stores.push(store);
-      groups.set(key, group);
+      groups.set(`${level}:${group.code}`, group);
+    };
+    (stores || []).filter((store) => store.targetOnly !== true).forEach((store) => addToGroup(store));
+    (stores || []).filter((store) => store.targetOnly === true).forEach((store) => {
+      const matchingGroup = [...groups.values()].find((group) => targetMatchesOrganization(store, group, level));
+      addToGroup(store, matchingGroup);
     });
     return [...groups.values()].map((group) => ({
       ...group,
+      validStoreCount: group.stores.filter((store) => store.targetOnly !== true).length,
+      targetOnly: group.stores.every((store) => store.targetOnly === true),
       current: sumMeasures(group.stores, "current"), previous: sumMeasures(group.stores, "previous"), week: sumMeasures(group.stores, "week"),
       monthlyTarget: finalizeTarget(sumTarget(group.stores)),
       ip: sumProcess(group.stores, "ip"), ipPrev: sumProcess(group.stores, "ipPrev"), ipWeek: sumProcess(group.stores, "ipWeek"),
@@ -205,9 +253,12 @@
   }
 
   function applyDrillPath(stores, drillPath = []) {
-    return (stores || []).filter((store) => drillPath.every((item) => item.level === "area"
-      ? groupIdentity(store, "area").code === item.code
-      : item.level === "district" ? groupIdentity(store, "district").code === item.code : true));
+    return (stores || []).filter((store) => drillPath.every((item) => {
+      if (item.level !== "area" && item.level !== "district") return true;
+      const identity = groupIdentity(store, item.level);
+      if (identity.code === item.code) return true;
+      return store.targetOnly === true && targetMatchesOrganization(store, item, item.level);
+    }));
   }
 
   function comparisonKey(row, level, rankScope = "default") {
@@ -366,15 +417,18 @@
   function buildViewRows({ displayStores = [], peerStores = displayStores, level = "store", drillPath = [], nationalComplete = false, rankScope = "default", storeDiagnosis }) {
     const visibleRows = aggregateStores(applyDrillPath(displayStores, drillPath), level);
     const peerRows = aggregateStores(applyDrillPath(peerStores, drillPath), level);
-    const orderRanks = rankRows(peerRows, "orders", level, nationalComplete, rankScope);
-    const retailRanks = rankRows(peerRows, "retail", level, nationalComplete, rankScope);
+    const rankedPeerRows = peerRows.filter((row) => row.targetOnly !== true);
+    const orderRanks = rankRows(rankedPeerRows, "orders", level, nationalComplete, rankScope);
+    const retailRanks = rankRows(rankedPeerRows, "retail", level, nationalComplete, rankScope);
     const diagnoses = level === "store" ? null : level === "area" && !nationalComplete
-      ? new Map(peerRows.map((row) => [row.code, { issueName: "排名不可用", resultBreakpoint: "无法证明当前数据覆盖全国完整大区集合，暂不输出全国排名诊断" }]))
-      : diagnoseRows(peerRows, level);
+      ? new Map(rankedPeerRows.map((row) => [row.code, { issueName: "排名不可用", resultBreakpoint: "无法证明当前数据覆盖全国完整大区集合，暂不输出全国排名诊断" }]))
+      : diagnoseRows(rankedPeerRows, level);
     const rows = visibleRows.map((row) => {
       const order = orderRanks.get(row.code);
       const retail = retailRanks.get(row.code);
-      const diagnosis = level === "store" ? storeDiagnosis?.(row) : diagnoses.get(row.code);
+      const diagnosis = row.targetOnly === true
+        ? { issueName: "样本不足", resultBreakpoint: `当前${LEVEL_META[level].scope}仅有订单目标，暂无有效销售样本；断点：--` }
+        : level === "store" ? storeDiagnosis?.(row) : diagnoses.get(row.code);
       return { ...row, orderRank: order?.text || "--", orderShare: order?.share ?? null, retailRank: retail?.text || "--", retailShare: retail?.share ?? null, issue: diagnosis?.issueName || "未发现显著异常", breakpoint: diagnosis?.resultBreakpoint || "暂无诊断结论" };
     });
     return sortViewRows(rows, level);

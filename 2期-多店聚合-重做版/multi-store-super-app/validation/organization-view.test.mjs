@@ -33,6 +33,12 @@ test("人员画像解析覆盖五类角色并安全降级", () => {
     [{ marketing_userType: 4, marketing_orgType: "MAC" }, "district"],
     [{ marketing_userType: "4", marketing_orgType: "rfs" }, "region"],
     [{ marketing_userType: 4, marketing_orgType: "HQ" }, "headquarters"],
+    [{ marketing_orgType: "RFS" }, "region"],
+    [{ marketing_orgType: "MAC" }, "district"],
+    [{ marketing_orgType: "HQ" }, "headquarters"],
+    [{}, "headquarters"],
+    [{ marketing_userType: null }, "headquarters"],
+    [{ marketing_userType: "", marketing_orgType: "  " }, "headquarters"],
     [{ marketing_userType: 2 }, "sales_director"],
     [{ marketing_userType: 6 }, "investor"]
   ];
@@ -43,7 +49,8 @@ test("人员画像解析覆盖五类角色并安全降级", () => {
   assert.equal(api.resolveRole(api.readPersonnelProfile(storage("{"))).ok, false);
   assert.equal(api.resolveRole(api.readPersonnelProfile(storage(JSON.stringify({ marketing_userType: 4 })))).ok, false);
   [null, undefined, "", "  "].forEach((value) => {
-    const result = api.resolveRole(api.readPersonnelProfile(storage(JSON.stringify({ marketing_userType: value }))));
+    const profile = value === undefined ? {} : { marketing_userType: value };
+    const result = api.resolveRole(api.readPersonnelProfile(storage(JSON.stringify(profile))));
     assert.deepEqual({ ok: result.ok, role: result.role }, { ok: true, role: "headquarters" });
   });
   [9, true, [], {}, false].forEach((value) => {
@@ -51,6 +58,28 @@ test("人员画像解析覆盖五类角色并安全降级", () => {
   });
   [null, [], {}, true, 123].forEach((value) => {
     assert.equal(api.resolveRole(api.readPersonnelProfile(storage(JSON.stringify({ marketing_userType: 4, marketing_orgType: value })))).ok, false);
+  });
+});
+
+test("userType=4 且未知非空 orgType 进入可审计兼容总部候选态", () => {
+  const result = api.resolveRole(api.readPersonnelProfile(storage(JSON.stringify({ marketing_userType: 4, marketing_orgType: "RSM" }))));
+  assert.equal(result.ok, true);
+  assert.equal(result.role, "headquarters");
+  assert.equal(result.compatibility, true);
+  assert.equal(result.inferred, true);
+  assert.match(result.reason, /marketing_userType=4/);
+  assert.match(result.reason, /RSM/);
+});
+
+test("缺 userType 且未知 orgType 仍 fail-closed 为 unknown", () => {
+  [undefined, null, "", "  "].forEach((userType) => {
+    const profile = userType === undefined
+      ? { marketing_orgType: "RSM" }
+      : { marketing_userType: userType, marketing_orgType: "RSM" };
+    const result = api.resolveRole(api.readPersonnelProfile(storage(JSON.stringify(profile))));
+    assert.equal(result.ok, false);
+    assert.equal(result.role, "unknown");
+    assert.match(result.reason, /marketing_orgType 不在已配置范围/);
   });
 });
 

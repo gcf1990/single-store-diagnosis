@@ -1,0 +1,23 @@
+{
+  "source": "guancli read-only 2026-07-22",
+  "targetDsId": "r05b1e3995b0b4480991a4b8",
+  "targetDataset": "MG-销售转化漏斗-零批订目标",
+  "dealerDimDsId": "a310ff90fddff4b6283841c6",
+  "dealerDimDataset": "新双品牌经销商主数据维度表&dim_main_dealer_info_p_df_wms",
+  "month": "2026-07",
+  "targetRows": 1542,
+  "orderTarget": 22578,
+  "retailTarget": 18580,
+  "blankOrNullDealerRows": 2,
+  "missingDealerCodeCount": 5,
+  "missingTargetRowsForDealerCodes": 20,
+  "missingDealerCodes": [
+    { "dealerCode": "MQ7320", "targetRows": 4, "orderTarget": 0, "retailTarget": 0 },
+    { "dealerCode": "MQ9331", "targetRows": 4, "orderTarget": 0, "retailTarget": 0 },
+    { "dealerCode": "SQ2547", "targetRows": 4, "orderTarget": 0, "retailTarget": 0 },
+    { "dealerCode": "SQ2881", "targetRows": 4, "orderTarget": 12, "retailTarget": 10 },
+    { "dealerCode": "SQ7919", "targetRows": 4, "orderTarget": 0, "retailTarget": 0 }
+  ],
+  "targetAggregateSql": "SELECT COUNT(1), SUM(CAST(`总订单目标` AS DOUBLE)), SUM(CAST(`总零售目标` AS DOUBLE)) FROM `MG-销售转化漏斗-零批订目标` WHERE SUBSTR(CAST(`目标日期` AS STRING), 1, 7) = '2026-07'",
+  "missingDealerSqlNote": "Left join target dealer_code to MG open dealer dimension by Chinese SQL aliases. Count distinct non-empty missing dealer_code for target effective dealer gap; blank/null dealer_code belongs to invalid key audit."
+}

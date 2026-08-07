@@ -1,0 +1,6 @@
+{
+  "sourceFile": "../../super-app/src/services/storeDiagnosis.ts",
+  "verifiedAt": "2026-07-16",
+  "topPriority": ["全新MG4", "MG 4X", "MG 07"],
+  "bottomPriority": ["其他车系", "未知车系", "位置车系"]
+}

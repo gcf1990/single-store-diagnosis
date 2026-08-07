@@ -6,7 +6,7 @@ import { config, contractFixture, model, orgRow, targetRow } from "./small-order
 
 async function withTmpReplay(payload, run) {
   const dir = await mkdtemp("/tmp/mg07-small-order-");
-  const file = join(dir, "real-replay.json");
+  const file = join(dir, "synthetic-fixture-replay.json");
   await writeFile(file, JSON.stringify(payload), "utf8");
   try {
     return await run(JSON.parse(await readFile(file, "utf8")), file);
@@ -25,19 +25,18 @@ function rawFromFixture(overrides = {}) {
     organizationRows: orgRows,
     actualRows: [],
     validDealers: [],
-    roleResult: { ok: true, role: "headquarters" },
     enforceTargetContract: true,
     ...overrides
   };
 }
 
-test("硬合同门禁不守恒时不得 ready", () => {
-  const raw = rawFromFixture();
+test("后台全国 QA 硬合同门禁不守恒时不得 ready", () => {
+  const raw = rawFromFixture({ adminAuditTargets: true });
   raw.targetRows = raw.targetRows.map((row) => row.一级经销商 === "MQ856G" ? { ...row, MG07小订目标: "1" } : row);
   const report = model.buildSmallOrderReport(raw, { viewLevel: "area" });
   assert.equal(report.status, "data_incomplete");
-  assert.match(report.error, /小订目标合同不守恒/);
-  assert.match(report.error, /targetTotal/);
+  assert.equal(report.error, "MG 07 小订目标数据暂不可用");
+  assert.match(report.diagnostics.contractError, /targetTotal/);
 });
 
 test("合同失败早退仍返回完整 anomaly schema 和固定窗口", () => {
@@ -50,6 +49,8 @@ test("合同失败早退仍返回完整 anomaly schema 和固定窗口", () => {
     actualRows: [],
     validDealers: [],
     roleResult: { ok: true, role: "headquarters" },
+    nationalComplete: true,
+    adminAuditTargets: true,
     enforceTargetContract: true
   };
   const report = model.buildSmallOrderReport(raw, { viewLevel: "store" });
@@ -71,8 +72,7 @@ test("实际源不可用时保留目标但不构造0实际、达成率和落后�
     actualRows: [{ dealer_code: "S1", actual_small_order: 3 }],
     actualStatus: "actual_unavailable",
     actualError: "timeout",
-    validDealers: [],
-    roleResult: { ok: true, role: "headquarters" },
+    validDealers: [{ code: "S1", areaCode: "SMG310", districtCode: "D1" }],
     enforceTargetContract: false
   };
   const report = model.buildSmallOrderReport(raw, { viewLevel: "store" });
@@ -85,10 +85,10 @@ test("实际源不可用时保留目标但不构造0实际、达成率和落后�
   assert.equal(report.summary.actualStatus, "actual_unavailable");
 });
 
-test("真实 /tmp 回放达到 403 mapped、0 unmapped、30001、17、7 和 MQ257T 修正", async () => {
+test("synthetic fixture / 临时文件回放达到 403 mapped、0 unmapped、30001、17、7 和 MQ257T 修正", async () => {
   await withTmpReplay(contractFixture(), ({ rows, orgRows }, file) => {
     assert.match(file, /\/tmp\/mg07-small-order-/);
-    const report = model.buildSmallOrderReport(rawFromFixture({ targetRows: rows, organizationRows: orgRows }), { viewLevel: "area" });
+    const report = model.buildSmallOrderReport(rawFromFixture({ targetRows: rows, organizationRows: orgRows, adminAuditTargets: true }), { viewLevel: "area" });
     assert.equal(report.status, "ready");
     assert.equal(report.audit.configuredRows, 403);
     assert.equal(report.audit.unmappedRows, 0);
@@ -100,7 +100,7 @@ test("真实 /tmp 回放达到 403 mapped、0 unmapped、30001、17、7 和 MQ25
   });
 });
 
-test("真实 /tmp 回放篡改 valid primary miss 明细但总量不变时合同门禁 fail-closed", async () => {
+test("synthetic fixture / 临时文件回放篡改 valid primary miss 明细但总量不变时合同门禁 fail-closed", async () => {
   const fixture = contractFixture();
   fixture.rows = fixture.rows.map((row) => {
     if (row.一级经销商 === "MQ207J") return { ...row, MG07小订目标: "103" };
@@ -108,20 +108,23 @@ test("真实 /tmp 回放篡改 valid primary miss 明细但总量不变时合同
     return row;
   });
   await withTmpReplay(fixture, ({ rows, orgRows }) => {
-    const report = model.buildSmallOrderReport(rawFromFixture({ targetRows: rows, organizationRows: orgRows }), { viewLevel: "area" });
+    const report = model.buildSmallOrderReport(rawFromFixture({ targetRows: rows, organizationRows: orgRows, adminAuditTargets: true }), { viewLevel: "area" });
     assert.equal(report.status, "data_incomplete");
-    assert.match(report.error, /validPrimaryMissDetailsMatch|validPrimaryHits|specialStatusRows/);
+    assert.equal(report.error, "MG 07 小订目标数据暂不可用");
+    assert.match(report.diagnostics.contractError, /validPrimaryMissDetailsMatch|validPrimaryHits|specialStatusRows/);
   });
 });
 
-test("真实 /tmp 回放支持 HQ 上游大区/小区简称精确筛选", async () => {
+test("synthetic fixture / 临时文件回放支持顶部 validDealers 大区/小区子集筛选", async () => {
   const fixture = contractFixture();
   const scoped = fixture.orgRows.find((row) => row.mac_shortnm === "小区3");
+  const scopeOrgRows = fixture.orgRows.filter((row) => row.rfs_shortnm === scoped.rfs_shortnm && row.mac_shortnm === scoped.mac_shortnm);
+  const validDealers = scopeOrgRows.map((row) => ({ code: row.parent_dealer_code, areaCode: row.rfs_code, area: row.rfs_name, districtCode: row.mac_code, district: row.mac_name }));
   await withTmpReplay(fixture, ({ rows, orgRows }) => {
     const report = model.buildSmallOrderReport(rawFromFixture({
       targetRows: rows,
-      organizationRows: orgRows,
-      params: { area: scoped.rfs_shortnm, district: scoped.mac_shortnm }
+      organizationRows: orgRows.filter((row) => scopeOrgRows.some((scopeRow) => scopeRow.parent_dealer_code === row.parent_dealer_code)),
+      validDealers
     }), { viewLevel: "store" });
     assert.equal(report.status, "ready");
     assert.ok(report.rows.length > 0);
@@ -129,12 +132,37 @@ test("真实 /tmp 回放支持 HQ 上游大区/小区简称精确筛选", async 
   });
 });
 
-test("真实 /tmp 回放篡改重复源代码时合同门禁 fail-closed", async () => {
+test("synthetic fixture / 临时文件回放模拟目标 DS RLS 子集时执行 scoped contract", async () => {
+  const fixture = contractFixture();
+  const scopeOrgRows = fixture.orgRows.filter((row) => row.rfs_code === "SMG310");
+  const scopeAreaNames = new Set(scopeOrgRows.map((row) => row.rfs_name));
+  const scopeTargetRows = fixture.rows.filter((row) => !row.一级经销商 || scopeAreaNames.has(row.区域));
+  const validDealers = scopeOrgRows.map((row) => ({ code: row.parent_dealer_code, areaCode: row.rfs_code, districtCode: row.mac_code }));
+  await withTmpReplay({ rows: scopeTargetRows, orgRows: scopeOrgRows, validDealers }, ({ rows, orgRows, validDealers }) => {
+    const report = model.buildSmallOrderReport(rawFromFixture({
+      targetRows: rows,
+      organizationRows: orgRows,
+      validDealers
+    }), { viewLevel: "store" });
+    assert.equal(report.status, "ready");
+    assert.equal(report.audit.contractOk, true);
+    assert.equal(report.audit.scopeUnmapped, 0);
+    assert.equal(report.audit.scopeSourceRows, orgRows.length);
+    assert.equal(report.audit.scopeMappedRows, orgRows.length);
+    assert.equal(report.audit.scopeMappedTargetTotal, report.audit.scopeTargetTotal);
+    assert.notEqual(report.audit.scopeTargetTotal, 30001);
+    ["configuredRows", "canonicalUniqueCodes", "targetTotal"].forEach((key) => assert.equal(Object.hasOwn(report.audit, key), false, key));
+    assert.equal(report.rows.every((row) => row.stores.every((store) => store.areaCode === "SMG310")), true);
+  });
+});
+
+test("synthetic fixture / 临时文件回放篡改重复源代码时合同门禁 fail-closed", async () => {
   const fixture = contractFixture();
   fixture.rows = fixture.rows.map((row, index) => index === 10 ? { ...row, 一级经销商: fixture.rows[9].一级经销商, 经销商简称: fixture.rows[9].经销商简称 } : row);
   await withTmpReplay(fixture, ({ rows, orgRows }) => {
-    const report = model.buildSmallOrderReport(rawFromFixture({ targetRows: rows, organizationRows: orgRows }), { viewLevel: "area" });
+    const report = model.buildSmallOrderReport(rawFromFixture({ targetRows: rows, organizationRows: orgRows, adminAuditTargets: true }), { viewLevel: "area" });
     assert.equal(report.status, "data_incomplete");
-    assert.match(report.error, /sourceUniqueCodes|canonicalUniqueCodes/);
+    assert.equal(report.error, "MG 07 小订目标数据暂不可用");
+    assert.match(report.diagnostics.contractError, /sourceUniqueCodes|canonicalUniqueCodes/);
   });
 });

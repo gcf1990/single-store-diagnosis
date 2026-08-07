@@ -17,9 +17,10 @@
   <link rel="stylesheet" href="./styles.css?v=20260708-sql2" />
   <link rel="stylesheet" href="./calendar.css?v=20260708-sql2" />
   <link rel="stylesheet" href="./components.css?v=20260708-sql2" />
-  <link rel="stylesheet" href="./visual-sync.css?v=20260724-merge-baixue1" />
-  <link rel="stylesheet" href="./iron-metrics.css?v=20260724-merge-baixue1" />
-  <link rel="stylesheet" href="./small-order.css?v=20260727-mg07-small-order1" />
+  <link rel="stylesheet" href="./visual-sync.css?v=20260806-series-filter-v244" />
+  <link rel="stylesheet" href="./iron-metrics.css?v=20260806-button-size-v234" />
+  <link rel="stylesheet" href="./small-order.css?v=20260806-toggle-icon-gap-v240" />
+  <link rel="stylesheet" href="./small-order-responsive.css?v=20260806-toggle-icon-gap-v240" />
 </head>
 <body data-theme="light">
   <div id="captureRoot" class="app-shell" data-theme="light">
@@ -32,14 +33,29 @@
 
     <main class="page-main">
       <section id="funnelGrid" class="funnel-module" aria-label="销售漏斗"></section>
-      <section id="smallOrderRoot" aria-label="MG 07小订战报"></section>
 
       <section class="store-tabs-panel" aria-label="门店表现">
-        <div class="store-tabs-head">
+        <div class="store-tabs" role="tablist" aria-label="门店表现切换">
+          <button id="salesTab" class="store-tab active is-active" type="button" role="tab" aria-selected="true" aria-controls="salesTabPanel" data-store-tab="sales">销售概览</button>
+          <button id="processTab" class="store-tab" type="button" role="tab" aria-selected="false" aria-controls="processTabPanel" data-store-tab="process">过程分析</button>
+          <button id="ironTab" class="store-tab" type="button" role="tab" aria-selected="false" aria-controls="ironTabPanel" data-store-tab="iron">打铁指标</button>
+        </div>
+        <div class="store-tabs-card">
+          <div class="store-tabs-head">
           <div class="store-panel-title">
             <div class="store-title-line">
               <h3 id="storeTableTitle">门店销售表现</h3>
               <nav id="organizationBreadcrumb" class="organization-breadcrumb" aria-label="组织层级" hidden></nav>
+            </div>
+          </div>
+          <div class="store-tab-line">
+            <div id="ironMetricGroups" class="iron-metric-groups" role="tablist" aria-label="打铁指标分组" hidden>
+              <button id="ironGroupTab-invite" class="iron-group-tab is-active active" type="button" role="tab" aria-selected="true" aria-controls="ironGroupPanel" data-iron-group="invite">邀约指标 7</button>
+              <button id="ironGroupTab-trial" class="iron-group-tab" type="button" role="tab" aria-selected="false" aria-controls="ironGroupPanel" data-iron-group="trial">试驾指标 4</button>
+            </div>
+            <div id="ironDashboardLinks" class="iron-dashboard-links" aria-label="打铁外部看板" hidden>
+              <a class="iron-dashboard-link" href="https://rdata-pv.rauto.com/home/web-app/a3bc8c0765f8b419bb6a2845" target="_blank" rel="noopener noreferrer" data-iron-dashboard-link>打铁运营看板<span class="iron-dashboard-link-icon" aria-hidden="true" data-material-symbol="open_in_new"></span></a>
+              <a class="iron-dashboard-link" href="https://rdata-pv.rauto.com/home/web-app/g8cb96bf254ae4cde97b7d0f?pgId=s9dade39bd42b474c9476216&id=LBiJMLcuHa" target="_blank" rel="noopener noreferrer" data-quality-drive-dashboard-link>优质试驾看板<span class="iron-dashboard-link-icon" aria-hidden="true" data-material-symbol="open_in_new"></span></a>
             </div>
           </div>
             <div class="store-panel-head-right">
@@ -48,40 +64,23 @@
                 <button id="exportSales" class="export-btn" type="button">导出</button>
             </div>
             <div id="processHeaderTools" class="process-header-tools" aria-label="过程表工具">
+              <div id="processMetricToggles" class="toggle-group process-tab-controls" aria-label="指标展示切换" hidden>
+                <span class="toggle-label">指标展示</span>
+                <label class="check-toggle">
+                  <input id="toggleMonth" type="checkbox" checked />
+                  <span class="box"></span>
+                  <span>月环比</span>
+                </label>
+                <label class="check-toggle">
+                  <input id="toggleWeek" type="checkbox" checked />
+                  <span class="box"></span>
+                  <span>周环比</span>
+                </label>
+              </div>
               <button id="toggleAllDealersProcess" class="all-dealers-btn" type="button" aria-label="查看当前范围全部经销商" hidden>查看所有经销商</button>
               <button id="exportProcess" class="export-btn" type="button">导出</button>
             </div>
           </div>
-        </div>
-
-        <div class="store-tabs-card">
-          <div class="store-tab-line">
-            <div class="store-tabs" role="tablist" aria-label="门店表现切换">
-              <button id="salesTab" class="store-tab active is-active" type="button" role="tab" aria-selected="true" aria-controls="salesTabPanel" data-store-tab="sales">销售概览</button>
-              <button id="processTab" class="store-tab" type="button" role="tab" aria-selected="false" aria-controls="processTabPanel" data-store-tab="process">过程分析</button>
-              <button id="ironTab" class="store-tab" type="button" role="tab" aria-selected="false" aria-controls="ironTabPanel" data-store-tab="iron">打铁指标</button>
-            </div>
-            <div id="ironMetricGroups" class="iron-metric-groups" role="tablist" aria-label="打铁指标分组" hidden>
-              <button id="ironGroupTab-invite" class="iron-group-tab is-active active" type="button" role="tab" aria-selected="true" aria-controls="ironGroupPanel" data-iron-group="invite">邀约指标 7</button>
-              <button id="ironGroupTab-trial" class="iron-group-tab" type="button" role="tab" aria-selected="false" aria-controls="ironGroupPanel" data-iron-group="trial">试驾指标 4</button>
-            </div>
-            <div id="ironDashboardLinks" class="iron-dashboard-links" aria-label="打铁外部看板" hidden>
-              <a class="iron-dashboard-link btn-link" href="https://rdata-pv.rauto.com/home/web-app/a3bc8c0765f8b419bb6a2845" target="_blank" rel="noopener noreferrer" data-iron-dashboard-link>打铁运营看板</a>
-              <a class="iron-dashboard-link btn-link" href="https://rdata-pv.rauto.com/home/web-app/g8cb96bf254ae4cde97b7d0f?pgId=s9dade39bd42b474c9476216&id=LBiJMLcuHa" target="_blank" rel="noopener noreferrer" data-quality-drive-dashboard-link>优质试驾看板</a>
-            </div>
-            <div id="processMetricToggles" class="toggle-group process-tab-controls" aria-label="指标展示切换" hidden>
-              <span class="toggle-label">指标展示</span>
-              <label class="check-toggle">
-                <input id="toggleMonth" type="checkbox" checked />
-                <span class="box"></span>
-                <span>月环比</span>
-              </label>
-              <label class="check-toggle">
-                <input id="toggleWeek" type="checkbox" checked />
-                <span class="box"></span>
-                <span>周环比</span>
-              </label>
-            </div>
           </div>
           <div class="store-table-body">
           <section id="salesTabPanel" class="store-tab-panel tab-panel active is-active" role="tabpanel" aria-labelledby="salesTab">
@@ -175,24 +174,24 @@
   <script src="./vehicle-series.js?v=20260722-vehicle-multi1"></script>
   <script src="./utils.js?v=20260722-vehicle-multi1"></script>
   <script src="./national-scope.js?v=20260715-scope1"></script>
-  <script src="./organization-view.js?v=20260723-all-dealers1"></script>
+  <script src="./organization-view.js?v=20260729-empty-role-hq-v205"></script>
   <script src="./organization-scope.js?v=20260716-scope1"></script>
   <script src="./data-api.js?v=20260727-vehicle-linkage1"></script>
-  <script src="./small-order-config.js?v=20260727-mg07-small-order1"></script>
-  <script src="./small-order-contract.js?v=20260727-mg07-small-order1"></script>
-  <script src="./small-order-model.js?v=20260727-mg07-small-order1"></script>
-  <script src="./small-order-api.js?v=20260727-mg07-small-order1"></script>
-  <script src="./small-order-view.js?v=20260727-mg07-small-order1"></script>
-  <script src="./iron-metrics-contract.js?v=20260727-vehicle-linkage1"></script>
-  <script src="./iron-metrics-model.js?v=20260727-vehicle-linkage1"></script>
-  <script src="./iron-metrics-api.js?v=20260727-vehicle-linkage1"></script>
-  <script src="./iron-metrics-view.js?v=20260727-vehicle-linkage1"></script>
-  <script src="./filter-api.js?v=20260708-sql2"></script>
+  <script src="./small-order-config.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-contract.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-model.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-api.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./small-order-view.js?v=20260806-toggle-icon-gap-v240"></script>
+  <script src="./iron-metrics-contract.js?v=20260731-iron-export-v213"></script>
+  <script src="./iron-metrics-model.js?v=20260731-iron-export-v213"></script>
+  <script src="./iron-metrics-api.js?v=20260731-iron-export-v213"></script>
+  <script src="./iron-metrics-view.js?v=20260731-iron-export-v213"></script>
+  <script src="./filter-api.js?v=20260807-dealer-parent-field-v217"></script>
   <script src="./filter-ui.js?v=20260708-sql2"></script>
   <script src="./metrics.js?v=20260723-target-async1"></script>
   <script src="./tracking.js?v=20260722-vehicle-multi1"></script>
   <script src="./capture.js?v=20260722-vehicle-multi1"></script>
-  <script src="./demo-fixture.js?v=20260723-local-demo1"></script>
-  <script src="./app.js?v=20260727-vehicle-linkage1"></script>
+  <script src="./demo-fixture.js?v=20260806-standalone-demo-v237"></script>
+  <script src="./app.js?v=20260731-iron-export-v213"></script>
 </body>
 </html>

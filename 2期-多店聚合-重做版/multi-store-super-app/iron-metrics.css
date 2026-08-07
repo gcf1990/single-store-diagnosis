@@ -1,0 +1,263 @@
+.iron-metric-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+}
+
+.iron-metric-groups {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.iron-metric-groups[hidden] {
+  display: none !important;
+}
+
+.iron-dashboard-link {
+  min-height: 30px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 2px;
+  color: var(--rp-blue);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.iron-dashboard-links {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-left: 4px;
+  border-left: 1px solid var(--table-divider);
+  padding-left: 16px;
+}
+
+.iron-dashboard-links[hidden] {
+  display: none !important;
+}
+
+.iron-dashboard-link:hover,
+.iron-dashboard-link:focus-visible {
+  background: transparent;
+  box-shadow: none;
+  color: #2258df;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  outline: none;
+}
+
+.iron-dashboard-link-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  display: block;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' height='24' viewBox='0 -960 960 960' width='24'%3E%3Cpath d='M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h240v80H200v560h560v-240h80v240q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H520v-80h320v320h-80v-184L388-332Z'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' height='24' viewBox='0 -960 960 960' width='24'%3E%3Cpath d='M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h240v80H200v560h560v-240h80v240q0 33-23.5 56.5T760-120H200Zm188-212-56-56 372-372H520v-80h320v320h-80v-184L388-332Z'/%3E%3C/svg%3E") center / 14px 14px no-repeat;
+}
+
+@media (max-width: 900px) {
+  .iron-dashboard-links {
+    width: 100%;
+    margin-left: 0;
+    border-top: 1px solid var(--table-divider);
+    border-left: 0;
+    padding-top: 8px;
+    padding-left: 0;
+  }
+}
+
+.iron-group-tab {
+  height: 32px;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #f6f7f9;
+  color: #334155;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.iron-group-tab:hover {
+  background: #f0f3f7;
+}
+
+.iron-group-tab.is-active {
+  border-color: #c7d5ff;
+  background: #f1f5ff;
+  color: var(--rp-blue);
+}
+
+.iron-group-tab.is-active:hover {
+  background: #edf3ff;
+}
+
+.iron-group-tab:focus-visible,
+.iron-dashboard-link:focus-visible,
+.store-tabs-panel .store-tab:focus-visible,
+.store-tabs-panel .detail-action:focus-visible {
+  outline: 2px solid var(--rp-blue);
+  outline-offset: 2px;
+}
+
+.iron-table-wrap {
+  container-type: inline-size;
+}
+
+.iron-table {
+  --process-col-dealer: max(132px, 12cqw);
+  --process-col-action: 96px;
+  --process-col-metric: max(156px, calc((100cqw - var(--process-col-dealer) - var(--process-col-action)) / 7));
+  --process-table-min-width: calc(var(--process-col-dealer) + 1188px);
+}
+
+.iron-table-trial {
+  --process-col-metric: max(156px, calc((100cqw - var(--process-col-dealer) - var(--process-col-action)) / 4));
+  --process-table-min-width: calc(var(--process-col-dealer) + 720px);
+  --iron-trial-cell-padding-inline: clamp(20px, 2cqw, 32px);
+}
+
+.iron-table col.action-col {
+  width: var(--process-col-action) !important;
+}
+
+.iron-table .sticky-action,
+.iron-table th.sticky-action {
+  width: var(--process-col-action) !important;
+  min-width: var(--process-col-action) !important;
+  max-width: var(--process-col-action) !important;
+}
+
+.iron-table th.metric-head {
+  white-space: normal;
+  border-right-width: 0 !important;
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  text-align: left;
+  vertical-align: top;
+}
+
+.iron-table tbody td:not(.sticky-col):not(.sticky-action) {
+  border-right-width: 0 !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  text-align: left;
+}
+
+/* Give short metric groups more breathing room without widening long, scrollable groups. */
+.iron-table-trial th.metric-head,
+.iron-table-trial tbody td:not(.sticky-col):not(.sticky-action) {
+  padding-left: var(--iron-trial-cell-padding-inline) !important;
+  padding-right: var(--iron-trial-cell-padding-inline) !important;
+}
+
+.iron-head-name,
+.iron-target-label {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.iron-head-name {
+  color: #42536a;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 18px;
+  min-height: 18px;
+}
+
+.iron-target-label {
+  margin-top: 3px;
+  color: #122033;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.iron-metric-cell {
+  min-height: 76px;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+}
+
+.iron-loading {
+  width: 64px;
+  height: 16px;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #edf2f8 0%, #f8fbff 50%, #edf2f8 100%);
+  background-size: 160% 100%;
+  animation: iron-loading 1.2s linear infinite;
+}
+
+@keyframes iron-loading {
+  from { background-position: 120% 0; }
+  to { background-position: -40% 0; }
+}
+
+[data-theme="dark"] .iron-metric-groups {
+  background: transparent;
+}
+
+[data-theme="dark"] .iron-group-tab {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .iron-group-tab:hover {
+  background: rgba(148, 163, 184, 0.18);
+}
+
+[data-theme="dark"] .iron-group-tab.is-active {
+  border-color: rgba(143, 180, 255, 0.4);
+  background: rgba(49, 107, 255, 0.16);
+  color: #8fb4ff;
+}
+
+[data-theme="dark"] .iron-dashboard-link {
+  background: transparent;
+  color: #8fb4ff;
+}
+
+[data-theme="dark"] .iron-dashboard-link:hover,
+[data-theme="dark"] .iron-dashboard-link:focus-visible {
+  background: transparent;
+  color: #bdd2ff;
+}
+
+[data-theme="dark"] .iron-head-name {
+  color: #d8e1ef;
+}
+
+[data-theme="dark"] .iron-target-label {
+  color: #9fb0c7;
+}
+
+[data-theme="dark"] .iron-metric-cell .metric-value {
+  color: #edf4ff;
+}

@@ -1,0 +1,28 @@
+/* 外链优化-02：链条图标前置，替代右侧跳转图标。 */
+.external-link-v02 .iron-dashboard-link {
+  gap: 8px;
+  color: #316bff;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.external-link-v02 .iron-dashboard-link:hover,
+.external-link-v02 .iron-dashboard-link:focus-visible {
+  color: #2258df;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.external-link-v02 .iron-dashboard-link-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4a5 5 0 0 0 0-10z'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+}
+
+.external-link-v02[data-theme="dark"] .iron-dashboard-link {
+  color: #8fb4ff;
+}

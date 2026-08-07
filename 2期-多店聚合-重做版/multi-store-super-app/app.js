@@ -13,7 +13,8 @@
   const { resolveActualScope } = window.OrganizationScope;
   const PROCESS_STAGE = { idle: 0, current: 1, previous: 2, week: 3, done: 4 };
   const TABLE_PAGE_SIZE = 15;
-  const appTestHooks = window.__RETAIL_PC_APP_TEST__ === true ? window.__RETAIL_PC_APP_TEST_HOOKS__ || null : null;
+  const appTestMode = window.__RETAIL_PC_LOADER_TEST__ === true || window.__RETAIL_PC_APP_TEST__ === true;
+  const appTestHooks = appTestMode ? (window.__RETAIL_PC_APP_TEST_HOOKS__ || null) : null;
 
   function previousIronWeekRange(range) {
     if (typeof apiPreviousWeekRange === "function") return apiPreviousWeekRange(range);
@@ -75,6 +76,16 @@
     loadToken: 0,
     monthlyTargetGeneration: 0,
     pendingMonthlyTarget: null,
+    loadIdentity: "",
+    salesFirstFrameReady: false,
+    secondaryStarted: false,
+    processCurrentPromise: null,
+    processCurrentContext: null,
+    processComparisonPromise: null,
+    processComparisonIdentity: "",
+    processComparisonRequested: false,
+    ironLoadIdentity: "",
+    ironLoadPromise: null,
     vehicleSeriesMenuOpen: false,
     smallOrderRaw: null,
     smallOrderReport: { status: "loading" },
@@ -182,7 +193,7 @@
 
   function renderError(message) {
     const text = `真实数据读取失败：${message}`;
-    document.getElementById("funnelGrid").innerHTML = empty(text);
+    renderFunnelEmpty(text);
     renderSmallOrderReport({ status: "target_unavailable", error: "主链路读取失败，小订战报暂不可用" });
     document.getElementById("diagnosisTableBody").innerHTML = `<tr><td colspan="6">${esc(text)}</td></tr>`;
     document.getElementById("processListTableBody").innerHTML = `<tr><td colspan="11">${esc(text)}</td></tr>`;
@@ -194,7 +205,7 @@
   function renderRoleError() {
     const reason = state.organization?.role?.reason || "人员画像缺失或角色未配置";
     const text = `角色识别异常：${reason}`;
-    document.getElementById("funnelGrid").innerHTML = empty(text);
+    renderFunnelEmpty(text);
     renderSmallOrderReport({ status: "no_permission", error: text });
     document.getElementById("diagnosisTableBody").innerHTML = `<tr><td colspan="6">${esc(text)}</td></tr>`;
     document.getElementById("processListTableBody").innerHTML = `<tr><td colspan="11">${esc(text)}</td></tr>`;
@@ -205,7 +216,7 @@
 
   function renderPermissionDenied() {
     const text = "无权限：当前账号无可访问的多店数据范围";
-    document.getElementById("funnelGrid").innerHTML = empty(text);
+    renderFunnelEmpty(text);
     renderSmallOrderReport({ status: "no_permission", error: text });
     document.getElementById("diagnosisTableBody").innerHTML = `<tr><td colspan="6">${esc(text)}</td></tr>`;
     document.getElementById("processListTableBody").innerHTML = `<tr><td colspan="11">${esc(text)}</td></tr>`;
@@ -217,8 +228,17 @@
   function renderFunnel() {
     if (appTestHooks?.renderFunnel) appTestHooks.renderFunnel(state);
     const d = state.data;
-    if (!d || !d.stores.length) {
-      document.getElementById("funnelGrid").innerHTML = empty("当前筛选范围暂无销售指标数据");
+    const target = d?.monthlyTarget || {};
+    const hasRawSalesData = typeof d?.hasRawSalesData === "boolean" ? d.hasRawSalesData : Boolean(d?.stores?.length);
+    const hasTargetDisplayState = typeof d?.hasTargetDisplayState === "boolean"
+      ? d.hasTargetDisplayState
+      : Boolean(target?.hasTarget || target?.order?.hasTarget || target?.retail?.hasTarget || target?.target > 0 || target?.order?.target > 0 || target?.retail?.target > 0 || ["loading", "unavailable"].includes(target?.status) || ["loading", "unavailable"].includes(target?.order?.status) || ["loading", "unavailable"].includes(target?.retail?.status));
+    if (!d || (!hasRawSalesData && !hasTargetDisplayState && !d.stores.length)) {
+      renderFunnelEmpty("当前筛选范围暂无销售指标数据");
+      return;
+    }
+    if (!hasRawSalesData) {
+      renderFunnelOverview(placeholderSalesCards(), placeholderProcessCards(), d.monthlyTarget);
       return;
     }
     const c = d.salesCurrent;
@@ -241,14 +261,20 @@
   }
 
   function renderFunnelPlaceholder() {
-    const sales = [["订单", "单"], ["交付率", ""], ["零售", "台"]].map(([label, unit]) => card(label, "--", unit, null, null));
-    const process = [
+    renderFunnelOverview(placeholderSalesCards(), placeholderProcessCards(), { status: "loading", order: { status: "loading" }, retail: { status: "loading" } });
+  }
+
+  function placeholderSalesCards() {
+    return [["订单", "单"], ["交付率", ""], ["零售", "台"]].map(([label, unit]) => card(label, "--", unit, null, null));
+  }
+
+  function placeholderProcessCards() {
+    return [
       card("线索到店率", "--", "", null, null),
       card("到店试驾率", "--", "", null, null),
       card("试驾订单率", "--", "", null, null),
       card("线索订单率", "--", "", null, null)
     ];
-    renderFunnelOverview(sales, process, { status: "loading", order: { status: "loading" }, retail: { status: "loading" } });
   }
 
   function renderFunnelOverview(salesCards, processCards, monthlyTarget) {
@@ -260,11 +286,25 @@
         </div>
         ${renderVehicleSeriesFilter()}
       </div>
+      <section id="smallOrderRoot" aria-label="MG 07小订战报"></section>
       <div class="funnel-overview-panels">
         ${group("销售指标", salesCards, "sales")}
         ${group("过程指标", processCards, "process")}
       </div>
     `;
+    renderSmallOrderView(document.getElementById("smallOrderRoot"), state.smallOrderReport, state.smallOrderViewState);
+  }
+
+  function renderFunnelEmpty(message) {
+    document.getElementById("funnelGrid").innerHTML = `
+      <div class="funnel-overview-header" aria-label="销售总览">
+        <div class="funnel-overview-title"><h2>销售总览</h2></div>
+        ${renderVehicleSeriesFilter()}
+      </div>
+      <section id="smallOrderRoot" aria-label="MG 07小订战报"></section>
+      ${empty(message)}
+    `;
+    renderSmallOrderView(document.getElementById("smallOrderRoot"), state.smallOrderReport, state.smallOrderViewState);
   }
 
   function createSmallOrderViewState() {
@@ -286,19 +326,28 @@
     renderSmallOrderView(document.getElementById("smallOrderRoot"), state.smallOrderReport, state.smallOrderViewState);
   }
 
+  function smallOrderUnavailableReport(error) {
+    if (error) console.error("MG 07 small order load failed", error);
+    return {
+      status: "target_unavailable",
+      error: "MG 07 小订数据暂不可用",
+      diagnostics: { rawError: error instanceof Error ? error.message : String(error || "") }
+    };
+  }
+
   async function loadSmallOrder(token, paramsSnapshot, validDealers) {
     const smallOrderToken = state.smallOrderLoadToken + 1;
     state.smallOrderLoadToken = smallOrderToken;
     renderSmallOrderLoading();
-    const raw = await loadSmallOrderRaw(paramsSnapshot, validDealers, { drillPath: state.smallOrderViewState.drillPath, roleResult: state.organization?.role, entryLevel: state.organization?.entryLevel });
+    const raw = await loadSmallOrderRaw(paramsSnapshot, validDealers, { drillPath: state.smallOrderViewState.drillPath, entryLevel: state.organization?.entryLevel });
     if (token !== state.loadToken || smallOrderToken !== state.smallOrderLoadToken) return;
     state.smallOrderRaw = raw;
     renderSmallOrderReport();
   }
 
   function bindSmallOrderActions() {
-    const root = document.getElementById("smallOrderRoot");
-    root?.addEventListener("click", (event) => {
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest("#smallOrderRoot")) return;
       const toggle = event.target.closest("[data-small-order-toggle]");
       if (toggle) {
         state.smallOrderViewState = { ...state.smallOrderViewState, expanded: !state.smallOrderViewState.expanded };
@@ -395,6 +444,50 @@
   }
   function vehicleSeriesSelectionKey(values = state.params.vehicleSeries) {
     return window.RetailVehicleSeries.vehicleSeriesKey(values);
+  }
+
+  function emitLoaderEvent(type, detail = {}) {
+    const event = { type, token: state.loadToken, time: Date.now(), ...detail };
+    if (window.__RETAIL_PC_APP_TEST__ || window.__RETAIL_PC_LOADER_TEST__ || appTestHooks) {
+      window.__retailPcLoaderEvents = [...(window.__retailPcLoaderEvents || []), event];
+    }
+    if (typeof appTestHooks?.loaderEvent === "function") appTestHooks.loaderEvent(event, state);
+  }
+
+  function requestIdentity(params, validDealers) {
+    const selected = window.RetailVehicleSeries.normalizeVehicleSeriesSelection(params?.vehicleSeries || []);
+    const dealerCodes = (validDealers || []).map((dealer) => String(dealer.code || "")).filter(Boolean).sort();
+    return JSON.stringify({
+      brand: params?.brand || "",
+      startDate: params?.startDate || "",
+      endDate: params?.endDate || "",
+      areaCode: params?.areaCode || "",
+      districtCode: params?.districtCode || "",
+      dealerCode: params?.dealerCode || "",
+      vehicleSeries: selected,
+      dealerCodes
+    });
+  }
+
+  function salesFirstFrameBarrier() {
+    if (typeof appTestHooks?.salesFirstFrameBarrier === "function") {
+      return Promise.resolve(appTestHooks.salesFirstFrameBarrier(state));
+    }
+    return new Promise((resolve) => {
+      const raf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (callback) => setTimeout(callback, 0);
+      raf(() => setTimeout(resolve, 0));
+    });
+  }
+
+  function assertVehicleSeriesSelectionAllowed(requested, options) {
+    if (!requested.length) return;
+    const normalized = window.RetailVehicleSeries.normalizeVehicleSeriesSelection(requested, options);
+    if (vehicleSeriesSelectionKey(normalized) === vehicleSeriesSelectionKey(requested)) return;
+    const valid = new Set((options || []).map((item) => String(item || "").trim()).filter(Boolean));
+    const invalid = requested.filter((item) => !valid.has(item));
+    const error = new Error(`非法车系筛选：${invalid.join("、") || requested.join("、")}`);
+    error.code = "INVALID_VEHICLE_SERIES";
+    throw error;
   }
 
   function renderVehicleSeriesFilter() {
@@ -1165,6 +1258,8 @@
 		    }
 	    syncAllDealerButtons();
 	    syncProcessView();
+	    if (state.activeStoreTab === "process") ensureProcessComparisonLoad();
+	    if (state.activeStoreTab === "iron") ensureIronMetricsLoad();
 	    renderStoreTable(state.activeStoreTab);
     if (state.activeStoreTab === "process") scrollSelectedProcessRow();
   }
@@ -1301,8 +1396,8 @@
       state.ironMonthRaw?.sourceStates || loadingIronSourceStates(),
       state.ironWeekRaw?.sourceStates || loadingIronSourceStates()
     );
-    const rows = window.IronMetricsView.exportCsvRows(records, rowsInScope, state.activeMetricGroup);
     const meta = LEVEL_META[effectiveViewLevel("iron")];
+    const rows = window.IronMetricsView.exportCsvRows(records, rowsInScope, state.activeMetricGroup, ironViewOptions());
     downloadCsv(`${allDealerModeActive("iron") ? "全部经销商" : meta.title}${window.IronMetricsView.groupLabel(state.activeMetricGroup)}.csv`, rows);
   }
 
@@ -1715,7 +1810,7 @@
     try {
       const [diagnosisDealers, diagnosisRaw] = await Promise.all([
         window.RegionFilterApi.loadValidDealers(scopedParams),
-        loadSalesRaw(scopedParams, { includeMonthlyTarget: false })
+        loadSalesRaw(scopedParams, { includeMonthlyTarget: false, includeVehicleSeriesOptions: false })
       ]);
       const diagnosisData = buildWorkbench(diagnosisRaw, { validDealers: diagnosisDealers });
       return mergeDiagnosisStores(diagnosisData.stores, displayStores || []);
@@ -1753,6 +1848,7 @@
     state.data = buildWorkbench(state.raw, { validDealers: state.validDealers });
     rebuildIronStores();
     renderFunnel();
+    renderSmallOrderReport();
     renderDiagnosisList();
   }
 
@@ -1791,6 +1887,16 @@
     state.loadToken = token;
     state.monthlyTargetGeneration += 1;
     state.pendingMonthlyTarget = null;
+    state.loadIdentity = "";
+    state.salesFirstFrameReady = false;
+    state.secondaryStarted = false;
+    state.processCurrentPromise = null;
+    state.processCurrentContext = null;
+    state.processComparisonPromise = null;
+    state.processComparisonIdentity = "";
+    state.processComparisonRequested = false;
+    state.ironLoadIdentity = "";
+    state.ironLoadPromise = null;
     const previousBrand = state.params?.brand;
     state.params = readRetailParams(ALL);
     normalizeVehicleSeriesUrl(state.params);
@@ -1900,10 +2006,12 @@
       state.loading = false;
       renderFunnel();
       if (window.__retailPcFixture.smallOrderRaw) {
+        const smallOrderValidCodes = new Set(state.validDealers.map((dealer) => dealer.code).filter(Boolean));
+        const fixtureSmallOrderRows = window.__retailPcFixture.smallOrderRaw.organizationRows || [];
         state.smallOrderRaw = {
           ...window.__retailPcFixture.smallOrderRaw,
+          organizationRows: fixtureSmallOrderRows.filter((row) => smallOrderValidCodes.has(String(row.parent_dealer_code || row["一级经销商代码"] || row.dealer_code || row["经销商代码"] || "").trim())),
           validDealers: state.validDealers,
-          roleResult: state.organization?.role,
           entryLevel: state.organization?.entryLevel,
           params: { ...state.params },
           enforceTargetContract: window.__retailPcFixture.smallOrderRaw.enforceTargetContract === true,
@@ -1915,31 +2023,47 @@
       }
       renderOrganizationTables();
       updateDataUpdatedAt();
-      if (window.__retailPcFixture.asyncIronMetrics === true) {
-        state.ironError = "";
-        state.ironSourceStates = loadingIronSourceStates();
-        renderIronMetrics();
-        loadIronMetrics(token, state.params, state.validDealers);
-      }
+      state.loadIdentity = requestIdentity(state.params, state.validDealers);
       return state.dataUpdatedAt;
     }
     try {
-      const options = await loadVehicleSeriesOptions(state.params);
-      if (token !== state.loadToken) return state.dataUpdatedAt;
-      state.vehicleSeriesOptions = window.RetailVehicleSeries.sortVehicleSeriesOptions(options);
-      reconcileVehicleSeriesOptions(state.vehicleSeriesOptions);
+      const requestedVehicleSeries = window.RetailVehicleSeries.normalizeVehicleSeriesSelection(state.params.vehicleSeries);
+      const hasRequestedVehicleSeries = requestedVehicleSeries.length > 0;
+      const vehicleSeriesOptionsPromise = Promise.resolve(loadVehicleSeriesOptions(state.params))
+        .then((options) => window.RetailVehicleSeries.sortVehicleSeriesOptions(options));
+      if (hasRequestedVehicleSeries) {
+        const options = await vehicleSeriesOptionsPromise;
+        if (token !== state.loadToken) return state.dataUpdatedAt;
+        assertVehicleSeriesSelectionAllowed(requestedVehicleSeries, options);
+        state.vehicleSeriesOptions = options;
+        reconcileVehicleSeriesOptions(state.vehicleSeriesOptions);
+      } else {
+        vehicleSeriesOptionsPromise
+          .then((options) => {
+            if (token !== state.loadToken) return;
+            state.vehicleSeriesOptions = options;
+            reconcileVehicleSeriesOptions(options);
+            if (state.data && !state.error) renderFunnel();
+          })
+          .catch((error) => {
+            if (token !== state.loadToken) return;
+            console.warn("车系枚举读取失败，默认全部车系主链路保持可用", error);
+          });
+      }
       const processParams = { ...state.params, vehicleSeries: [] };
-      const needsProcessBaseline = selectedVehicleSeries(state.vehicleSeriesOptions).length > 0;
-      const monthlyTargetPromise = beginMonthlyTargetLoad(token, { ...state.params, vehicleSeries: [...selectedVehicleSeries()] }, range);
-      monthlyTargetPromise.catch(() => undefined);
+      const selectedForLoad = hasRequestedVehicleSeries ? selectedVehicleSeries(state.vehicleSeriesOptions) : [];
+      const needsProcessBaseline = selectedForLoad.length > 0;
+      emitLoaderEvent("sales_core_start");
       const [dealerScope, salesRaw, processBaselineRaw] = await Promise.all([
         window.RegionFilterApi.loadValidDealerScope(state.params),
-        loadSalesRaw(state.params, { includeMonthlyTarget: false }),
-        needsProcessBaseline ? loadSalesRaw(processParams, { includeMonthlyTarget: false }) : Promise.resolve(null)
+        loadSalesRaw(state.params, { includeMonthlyTarget: false, includeVehicleSeriesOptions: false }),
+        needsProcessBaseline ? loadSalesRaw(processParams, { includeMonthlyTarget: false, includeVehicleSeriesOptions: false }) : Promise.resolve(null)
       ]);
       if (token !== state.loadToken) return state.dataUpdatedAt;
+      emitLoaderEvent("sales_core_success");
       const validDealers = dealerScope.dealers;
       state.validDealers = validDealers;
+      state.loadIdentity = requestIdentity(state.params, validDealers);
       const nationalScopeRaw = processBaselineRaw || salesRaw;
       const nationalComplete = evaluateNationalScopeEvidence({
         roleResult: state.organization.role,
@@ -1969,26 +2093,19 @@
       state.processStage = "idle";
       state.processError = "";
       state.processErrors = emptyProcessErrors();
-      state.ironLoading = true;
+      state.ironLoading = false;
       state.ironError = "";
-      state.ironSourceStates = loadingIronSourceStates();
+      state.ironSourceStates = {};
       state.diagnosisStatus = "generating";
       state.diagnosisByStore = new Map();
       updateDataUpdatedAt();
       renderFunnel();
-      loadSmallOrder(token, { ...state.params }, validDealers).catch((error) => {
-        if (token !== state.loadToken) return;
-        renderSmallOrderReport({ status: "target_unavailable", error: error instanceof Error ? error.message : String(error) });
-      });
       renderDiagnosisList();
       renderProcessComparisonList();
       renderIronMetrics();
-      refreshDynamicDiagnoses(token);
 	      if (token === state.loadToken) window.trackRetailView?.(state.params, state.data.stores.filter((store) => store.targetOnly !== true), ALL);
       reportDataStatus();
-      loadDiagnosisUniverseInBackground(token, { ...state.params, vehicleSeries: [...selectedVehicleSeries()] }, validDealers, state.data.stores);
-      loadNegativeProcess(token, salesRaw, validDealers, { ...state.params, vehicleSeries: [...selectedVehicleSeries()] });
-      loadIronMetrics(token, state.params, validDealers);
+      scheduleSecondaryLoaders(token, salesRaw, validDealers, range, { ...state.params, vehicleSeries: [...selectedForLoad] });
       return state.dataUpdatedAt;
     } catch (error) {
       if (token !== state.loadToken) return state.dataUpdatedAt;
@@ -2035,33 +2152,9 @@
   }
 
   async function loadNegativeProcess(token, salesRaw, validDealers, paramsSnapshot = { ...state.params, vehicleSeries: [...selectedVehicleSeries()] }) {
-    const currentTasks = [
-      { kind: "ip", stage: "current" },
-      { kind: "drive", stage: "current" }
-    ];
-    const comparisonTasks = [
-      { kind: "ip", stage: "previous" },
-      { kind: "drive", stage: "previous" },
-      { kind: "ip", stage: "week" },
-      { kind: "drive", stage: "week" }
-    ];
-    const currentResults = await loadProcessWave(currentTasks, paramsSnapshot, salesRaw, validDealers);
+    await loadNegativeProcessCurrent(token, salesRaw, validDealers, paramsSnapshot);
     if (token !== state.loadToken) return;
-    mergeProcessWaveResults(currentResults);
-    rebuildProcessWorkbench(validDealers);
-    state.processStage = "current";
-    renderProcessComparisonForWave();
-
-    if (token !== state.loadToken) return;
-    const comparisonResults = await loadProcessWave(comparisonTasks, paramsSnapshot, salesRaw, validDealers);
-    if (token !== state.loadToken) return;
-    mergeProcessWaveResults(comparisonResults);
-    rebuildProcessWorkbench(validDealers);
-    state.processLoading = false;
-    state.processStage = "week";
-    state.processError = processErrorMessage();
-    renderProcessComparisonForWave();
-    refreshDynamicDiagnosesForWave(token);
+    await loadNegativeProcessComparisons(token, salesRaw, validDealers, paramsSnapshot);
   }
 
   function loadProcessWave(tasks, paramsSnapshot, salesRaw, validDealers) {
@@ -2118,7 +2211,134 @@
     refreshDynamicDiagnoses(token);
   }
 
-  async function loadIronMetrics(token, paramsSnapshot, validDealers) {
+  async function scheduleSecondaryLoaders(token, salesRaw, validDealers, range, paramsSnapshot) {
+    emitLoaderEvent("sales_first_frame_dom");
+    await salesFirstFrameBarrier();
+    if (token !== state.loadToken) return;
+    state.salesFirstFrameReady = true;
+    emitLoaderEvent("sales_first_frame");
+    if (state.secondaryStarted) return;
+    state.secondaryStarted = true;
+
+    refreshDynamicDiagnoses(token);
+    loadDiagnosisUniverseInBackground(token, { ...state.params, vehicleSeries: [...selectedVehicleSeries()] }, validDealers, state.data?.stores || []);
+
+    emitLoaderEvent("monthly_target_start");
+    beginMonthlyTargetLoad(token, { ...paramsSnapshot, vehicleSeries: [...(paramsSnapshot.vehicleSeries || [])] }, range).catch(() => undefined);
+
+    if (typeof loadSmallOrderRaw === "function") {
+      emitLoaderEvent("small_order_start");
+      loadSmallOrder(token, { ...state.params }, validDealers).catch((error) => {
+        if (token !== state.loadToken) return;
+        renderSmallOrderReport(smallOrderUnavailableReport(error));
+      });
+    }
+
+    startProcessCurrentLoad(token, salesRaw, validDealers, paramsSnapshot);
+    if (state.activeStoreTab === "process") ensureProcessComparisonLoad();
+    if (state.activeStoreTab === "iron") ensureIronMetricsLoad();
+  }
+
+  function startProcessCurrentLoad(token, salesRaw, validDealers, paramsSnapshot) {
+    if (state.processCurrentPromise) return state.processCurrentPromise;
+    const identity = requestIdentity(paramsSnapshot, validDealers);
+    state.processCurrentContext = { token, identity, salesRaw, validDealers, paramsSnapshot };
+    emitLoaderEvent("process_current_start", { identity });
+    state.processCurrentPromise = loadNegativeProcessCurrent(token, salesRaw, validDealers, paramsSnapshot)
+      .then(() => {
+        if (token !== state.loadToken || state.loadIdentity !== identity) return;
+        if (state.activeStoreTab === "process" || state.processComparisonRequested) ensureProcessComparisonLoad();
+      })
+      .catch((error) => {
+        if (token !== state.loadToken || state.loadIdentity !== identity) return;
+        state.processError = error instanceof Error ? error.message : String(error);
+        renderProcessComparisonForWave();
+      });
+    return state.processCurrentPromise;
+  }
+
+  function ensureProcessComparisonLoad() {
+    state.processComparisonRequested = true;
+    const context = state.processCurrentContext;
+    if (!context || context.token !== state.loadToken || context.identity !== state.loadIdentity) return null;
+    if (state.processComparisonIdentity === context.identity && state.processComparisonPromise) return state.processComparisonPromise;
+    if (state.processStage === "idle") return state.processCurrentPromise || null;
+    state.processComparisonIdentity = context.identity;
+    emitLoaderEvent("process_comparison_start", { identity: context.identity });
+    state.processComparisonPromise = loadNegativeProcessComparisons(context.token, context.salesRaw, context.validDealers, context.paramsSnapshot)
+      .catch((error) => {
+        if (context.token !== state.loadToken || context.identity !== state.loadIdentity) return;
+        state.processError = error instanceof Error ? error.message : String(error);
+        renderProcessComparisonForWave();
+      });
+    return state.processComparisonPromise;
+  }
+
+  function ensureIronMetricsLoad() {
+    if (!state.data || !state.validDealers.length) return null;
+    const fixtureIronStates = window.__retailPcFixture?.ironSourceStates;
+    if (window.__retailPcFixture?.asyncIronMetrics === true && !window.__retailPcFixture?.ironRaw && fixtureIronStates && Object.keys(fixtureIronStates).length) {
+      state.ironLoading = true;
+      state.ironRaw = null;
+      state.ironSourceStates = fixtureIronStates;
+      renderIronMetrics();
+      return null;
+    }
+    const identity = state.loadIdentity || requestIdentity(state.params, state.validDealers);
+    if (state.ironLoadIdentity === identity && state.ironLoadPromise) return state.ironLoadPromise;
+    if (state.ironLoadIdentity === identity && (state.ironRaw || state.ironError)) return state.ironLoadPromise;
+    if (state.ironRaw && !state.ironLoading && !state.ironError) {
+      state.ironLoadIdentity = identity;
+      return state.ironLoadPromise;
+    }
+    const token = state.loadToken;
+    state.ironLoadIdentity = identity;
+    state.ironLoading = true;
+    state.ironError = "";
+    state.ironSourceStates = loadingIronSourceStates();
+    emitLoaderEvent("iron_start", { identity });
+    renderIronMetrics();
+    state.ironLoadPromise = loadIronMetrics(token, { ...state.params }, state.validDealers, identity)
+      .catch((error) => {
+        if (token !== state.loadToken || identity !== state.loadIdentity) return;
+        state.ironError = error instanceof Error ? error.message : String(error);
+        renderIronMetrics();
+      });
+    return state.ironLoadPromise;
+  }
+
+  async function loadNegativeProcessCurrent(token, salesRaw, validDealers, paramsSnapshot) {
+    const currentTasks = [
+      { kind: "ip", stage: "current" },
+      { kind: "drive", stage: "current" }
+    ];
+    const currentResults = await loadProcessWave(currentTasks, paramsSnapshot, salesRaw, validDealers);
+    if (token !== state.loadToken) return;
+    mergeProcessWaveResults(currentResults);
+    rebuildProcessWorkbench(validDealers);
+    state.processStage = "current";
+    renderProcessComparisonForWave();
+  }
+
+  async function loadNegativeProcessComparisons(token, salesRaw, validDealers, paramsSnapshot) {
+    const comparisonTasks = [
+      { kind: "ip", stage: "previous" },
+      { kind: "drive", stage: "previous" },
+      { kind: "ip", stage: "week" },
+      { kind: "drive", stage: "week" }
+    ];
+    const comparisonResults = await loadProcessWave(comparisonTasks, paramsSnapshot, salesRaw, validDealers);
+    if (token !== state.loadToken) return;
+    mergeProcessWaveResults(comparisonResults);
+    rebuildProcessWorkbench(validDealers);
+    state.processLoading = false;
+    state.processStage = "week";
+    state.processError = processErrorMessage();
+    renderProcessComparisonForWave();
+    refreshDynamicDiagnosesForWave(token);
+  }
+
+  async function loadIronMetrics(token, paramsSnapshot, validDealers, identity = requestIdentity(paramsSnapshot, validDealers)) {
     const currentRange = resolveDateRange(paramsSnapshot);
     const monthRange = previousMonthRange(currentRange);
     const weekRange = previousIronWeekRange(currentRange);
@@ -2132,18 +2352,18 @@
         const raw = await loadIronMetricsRaw(rangeParams(range), validDealers, {
           sourceTimeoutMs: window.__retailPcFixture?.ironSourceTimeoutMs,
           onSourceSettled: (sourceName, partialRaw) => {
-            if (token !== state.loadToken) return;
+            if (token !== state.loadToken || identity !== state.loadIdentity) return;
             if (period === "month") state.ironMonthRaw = partialRaw;
             else state.ironWeekRaw = partialRaw;
             renderIronMetrics();
           }
         });
-        if (token !== state.loadToken) return;
+        if (token !== state.loadToken || identity !== state.loadIdentity) return;
         if (period === "month") state.ironMonthRaw = raw;
         else state.ironWeekRaw = raw;
         renderIronMetrics();
       } catch (error) {
-        if (token !== state.loadToken) return;
+        if (token !== state.loadToken || identity !== state.loadIdentity) return;
         if (period === "month") state.ironMonthRaw = failedRaw(range, error);
         else state.ironWeekRaw = failedRaw(range, error);
         renderIronMetrics();
@@ -2158,7 +2378,7 @@
       const raw = await loadIronMetricsRaw(rangeParams(currentRange), validDealers, {
         sourceTimeoutMs: window.__retailPcFixture?.ironSourceTimeoutMs,
         onSourceSettled: (sourceName, partialRaw) => {
-          if (token !== state.loadToken) return;
+          if (token !== state.loadToken || identity !== state.loadIdentity) return;
           state.ironRaw = partialRaw;
           rebuildIronStores();
           state.ironSourceStates = partialRaw.sourceStates || {};
@@ -2166,7 +2386,7 @@
           renderIronMetrics();
         }
       });
-      if (token !== state.loadToken) return;
+      if (token !== state.loadToken || identity !== state.loadIdentity) return;
       state.ironRaw = raw;
       rebuildIronStores();
       state.ironSourceStates = raw.sourceStates || {};
@@ -2178,11 +2398,11 @@
         loadComparison("week", weekRange)
       ]);
     } catch (error) {
-      if (token !== state.loadToken) return;
+      if (token !== state.loadToken || identity !== state.loadIdentity) return;
       state.ironError = error instanceof Error ? error.message : String(error);
       state.ironSourceStates = Object.fromEntries(Object.keys(window.IronMetricsContract.SOURCE_NAMES).map((key) => [key, { status: "incomplete", complete: false, error: state.ironError }]));
     } finally {
-      if (token !== state.loadToken) return;
+      if (token !== state.loadToken || identity !== state.loadIdentity) return;
       state.ironLoading = false;
       renderIronMetrics();
     }
@@ -2293,6 +2513,9 @@
       reload: () => load(),
       getStateSnapshot: () => ({
         role: state.organization?.role?.role,
+        roleCompatibility: state.organization?.role?.compatibility === true,
+        roleInferred: state.organization?.role?.inferred === true,
+        roleReason: state.organization?.role?.reason || "",
         entryLevel: state.organization?.entryLevel,
 	        viewLevel: state.organization?.viewLevel,
 	        drillPath: (state.organization?.drillPath || []).map((item) => ({ ...item })),
@@ -2320,9 +2543,11 @@
 	        },
 	        smallOrderReportStatus: state.smallOrderReport?.status || "",
 	        smallOrderSummary: state.smallOrderReport?.summary || null,
+	        smallOrderAudit: state.smallOrderReport?.audit || null,
 	        monthlyTargetStatus: state.data?.monthlyTarget?.status || state.raw?.monthlyTarget?.status || "",
 	        monthlyTargetOrderTarget: state.data?.monthlyTarget?.order?.target || 0,
 	        monthlyTargetRetailTarget: state.data?.monthlyTarget?.retail?.target || 0,
+	        salesOrders: state.data?.salesCurrent?.orders || 0,
 	        vehicleSeries: [...selectedVehicleSeries()],
 	        nationalComplete: state.raw?.nationalComplete === true,
 	        visibleStoreCodes: buildDiagnosisRows().filter((row) => row.level === "store").map((row) => row.code),
@@ -2338,6 +2563,8 @@
       salesRowConversionRates,
       salesFunnelCell,
       loadNegativeProcess,
+      loadNegativeProcessCurrent,
+      loadNegativeProcessComparisons,
       state,
       emptyProcessErrors
     };

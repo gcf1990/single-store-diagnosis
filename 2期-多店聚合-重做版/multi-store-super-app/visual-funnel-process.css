@@ -1,0 +1,235 @@
+.funnel-module {
+  grid-template-columns: minmax(0, 3fr) minmax(0, 4fr) !important;
+  gap: 16px;
+}
+
+.funnel-group {
+  border-color: rgba(207, 219, 236, 0.96);
+  border-radius: 18px;
+  background: rgba(248, 251, 255, 0.64);
+  padding: 16px;
+}
+
+.funnel-group-grid {
+  gap: 12px;
+}
+
+.funnel-card {
+  position: relative;
+  display: grid;
+  grid-template-rows: 20px 36px 16px 16px;
+  align-content: start;
+  row-gap: 0;
+  height: auto;
+  min-height: 116px;
+  border: 1px solid #d9e2f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+  box-shadow: 0 1px 2px rgba(11, 28, 48, 0.05);
+}
+
+.funnel-card h3 {
+  margin: 0;
+  color: #718198;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.funnel-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 4px;
+  color: #111827;
+  font-size: 30px;
+  line-height: 36px;
+  font-weight: 700;
+  min-height: 36px;
+}
+
+.funnel-card:nth-child(2n) .funnel-value {
+  color: #111827;
+  justify-content: flex-start;
+}
+
+.funnel-card:nth-child(8) .funnel-value {
+  color: #111827;
+}
+
+.funnel-card:nth-child(2n),
+.funnel-card:nth-child(8) {
+  text-align: left;
+}
+
+.funnel-value span {
+  color: #667085;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.funnel-card p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+
+.funnel-card small {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+
+.funnel-card p.good {
+  color: #19a56f;
+}
+
+.funnel-card p.bad {
+  color: #e5484d;
+}
+
+.funnel-card small.good {
+  color: #19a56f;
+}
+
+.funnel-card small.bad {
+  color: #e5484d;
+}
+
+.funnel-card p.neutral,
+.funnel-card small.neutral {
+  color: #667085;
+}
+
+.process-grid {
+  gap: 16px;
+}
+
+.process-panel,
+.trend-panel,
+.issue-panel,
+.advisor-panel {
+  border: 1px solid rgba(228, 234, 243, 0.96);
+  border-radius: 18px;
+  background: var(--rp-panel);
+  box-shadow: var(--rp-shadow);
+}
+
+.process-panel {
+  min-height: 420px;
+}
+
+.process-panel.active {
+  border-color: rgba(49, 107, 255, 0.32);
+  box-shadow: 0 18px 50px rgba(49, 107, 255, 0.12);
+}
+
+.process-title {
+  min-height: 46px;
+  padding: 8px 16px;
+}
+
+h2,
+.process-title h2,
+.issue-panel h2,
+.advisor-panel h2 {
+  color: var(--rp-text);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+
+.ghost-button,
+.store-detail-link {
+  height: 30px;
+  min-height: 30px;
+  border: 1px solid var(--rp-line);
+  border-radius: 11px;
+  background: #f3f7fe;
+  color: #536078;
+  padding: 0 12px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.ghost-button:hover,
+.store-detail-link:hover {
+  border-color: rgba(49, 107, 255, 0.34);
+  color: var(--rp-blue);
+  background: #eef4ff;
+}
+
+.process-body {
+  gap: 10px;
+  max-height: 322px;
+  padding: 14px 16px 16px;
+}
+
+.process-group {
+  margin-bottom: 0;
+  border: 1px solid var(--rp-line);
+  border-radius: 16px;
+  background: rgba(247, 250, 255, 0.72);
+  padding: 14px;
+}
+
+.process-group h3 {
+  margin: 0 0 10px;
+  color: var(--rp-text);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 700;
+}
+
+.process-group h3 span,
+.issue-item i {
+  width: 8px;
+  height: 8px;
+  background: linear-gradient(180deg, var(--rp-blue), var(--rp-cyan));
+}
+
+.process-row {
+  min-height: 42px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(54px, 0.55fr) minmax(108px, 0.9fr);
+  gap: 8px;
+  border: 1px solid rgba(228, 234, 243, 0.82);
+  border-radius: 12px;
+  background: #fff;
+  padding: 9px 10px;
+  margin-top: 8px;
+}
+
+.process-row strong {
+  color: var(--rp-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.process-row b {
+  color: var(--rp-text);
+  text-align: right;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 750;
+}
+
+.process-row em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}

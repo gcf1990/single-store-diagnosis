@@ -37,10 +37,16 @@
     return statusText === "开业" && networkText === "否" && Boolean(officialName) && mgAreaCodes.includes(areaCode) && !excludedAreaNames.includes(areaName);
   }
 
-  function targetValue(row) {
+  function parseTargetValue(row) {
     const valueText = text(row?.MG07小订目标);
-    if (!/^\d+$/.test(valueText)) throw new Error(`目标源行号 ${row.__rowNumber || "--"} MG07小订目标 非非负整数`);
-    return Number(valueText);
+    if (!/^\d+$/.test(valueText)) return { ok: false, value: 0, reason: "目标配置不是非负整数" };
+    return { ok: true, value: Number(valueText), reason: "" };
+  }
+
+  function targetValue(row) {
+    const parsed = parseTargetValue(row);
+    if (!parsed.ok) throw new Error(parsed.reason);
+    return parsed.value;
   }
 
   function normalizeTargets(rows, orgRows) {
@@ -55,18 +61,23 @@
         summaryRows += 1;
         return;
       }
+      const parsedTarget = parseTargetValue(row);
       const base = {
         sourceRowNumber: index + 1,
         originalCode: rawCode,
         dealerShortName: text(row["经销商简称"]) || rawCode,
         sourceArea: text(row["区域"]),
         sourceMac: text(row.MAC),
-        target: targetValue({ ...row, __rowNumber: index + 1 })
+        target: parsedTarget.value
       };
+      if (!parsedTarget.ok) {
+        anomalies.push({ anomalyType: "target_invalid", originalCode: rawCode, canonicalCode: rawCode, dealerName: base.dealerShortName, target: 0, actual: 0, reason: parsedTarget.reason, handling: "fail-closed" });
+        return;
+      }
       const exact = rawCode === "MQ257T" ? [] : uniqueCanonical(disambiguate(byCode.get(rawCode) || [], base));
       const fallback = exact.length ? exact : uniqueCanonical(matchByText(orgs, base));
       if (fallback.length !== 1) {
-        anomalies.push({ anomalyType: "organization_unmapped", originalCode: rawCode, canonicalCode: "", dealerName: base.dealerShortName, target: base.target, actual: 0, reason: fallback.length > 1 ? "权威维表多命中" : "权威维表0命中", handling: "fail-closed" });
+        anomalies.push({ anomalyType: "organization_unmapped", originalCode: rawCode, canonicalCode: "", dealerName: base.dealerShortName, target: base.target, actual: 0, reason: fallback.length > 1 ? "目标门店匹配到多个权威门店" : "目标门店无法匹配权威门店", handling: "source_in_summary_unassigned_to_drilldown" });
         return;
       }
       const org = fallback[0];
@@ -140,7 +151,7 @@
     normalizeActuals(rows).forEach((row) => {
       const candidates = uniqueCanonical(byCode.get(row.code) || []);
       if (candidates.length !== 1) {
-        anomalies.push({ anomalyType: "organization_unmapped", originalCode: row.code, canonicalCode: "", dealerName: candidates[0]?.name || "", target: 0, actual: row.actual, reason: candidates.length > 1 ? "实际权威维表多命中" : "实际权威维表0命中", handling: "fail-closed" });
+        anomalies.push({ anomalyType: "organization_unmapped", originalCode: row.code, canonicalCode: "", candidateCanonicalCodes: candidates.map((item) => item.code).filter(Boolean), dealerName: candidates[0]?.name || "", target: 0, actual: row.actual, reason: candidates.length > 1 ? "实际权威维表多命中" : "实际权威维表0命中", handling: "fail-closed" });
         return;
       }
       const org = candidates[0];
@@ -150,24 +161,42 @@
   }
 
   function permissionScope(raw) {
-    const role = raw.roleResult || {};
-    if (role.ok !== true) return { ok: false, reason: "小订权限不可证", codes: new Set(), areaCodes: new Set(), districtCodes: new Set(), mode: "none" };
-    if (role.role === "headquarters") return { ok: true, reason: "", codes: null, areaCodes: null, districtCodes: null, mode: "all" };
+    if (raw.adminAuditTargets === true) return { ok: true, reason: "", codes: null, areaCodes: null, districtCodes: null, dealerEvidence: new Map(), nationalComplete: raw.nationalComplete === true, mode: "all" };
     const validDealers = raw.validDealers || [];
-    const codes = new Set(validDealers.map((row) => text(row.code)).filter(Boolean));
-    const areaCodes = new Set(validDealers.map((row) => text(row.areaCode)).filter(Boolean));
-    const districtCodes = new Set(validDealers.map((row) => text(row.districtCode)).filter(Boolean));
-    if (!codes.size && !areaCodes.size && !districtCodes.size) return { ok: false, reason: "小订权限范围为空", codes, areaCodes, districtCodes, mode: "none" };
-    if (role.role === "region") return { ok: true, reason: "", codes, areaCodes, districtCodes, mode: "area" };
-    if (role.role === "district") return { ok: true, reason: "", codes, areaCodes, districtCodes, mode: "district" };
-    return { ok: codes.size > 0, reason: codes.size ? "" : "小订授权门店为空", codes, areaCodes, districtCodes, mode: "code" };
+    const authorityRows = validDealers.map((row) => ({
+      code: text(row.parentDealerCode || row.parent_dealer_code || row.parentDealerCompanyCode || row.parentCompanyCode || row.dealerCompanyCode || row.code || row.dealerCode),
+      leafCode: text(row.code || row.dealerCode || row.dealer_code),
+      name: text(pick(row, ["name", "dealerName", "dealerShortName", "store", "storeName"])),
+      areaCode: text(row.areaCode || row.rfsCode),
+      area: text(pick(row, ["area", "areaName", "areaShortName"])),
+      districtCode: text(row.districtCode || row.macCode),
+      district: text(pick(row, ["district", "districtName", "districtShortName"]))
+    })).filter((row) => row.code);
+    const codes = new Set(authorityRows.map((row) => row.code));
+    const areaCodes = new Set(authorityRows.map((row) => row.areaCode).filter(Boolean));
+    const districtCodes = new Set(authorityRows.map((row) => row.districtCode).filter(Boolean));
+    const dealerEvidence = new Map();
+    authorityRows.forEach((row) => {
+      const code = text(row.code);
+      if (!code) return;
+      const evidence = {
+        code,
+        name: row.name,
+        areaCode: text(row.areaCode),
+        area: row.area,
+        districtCode: text(row.districtCode),
+        district: row.district
+      };
+      dealerEvidence.set(code, [...(dealerEvidence.get(code) || []), evidence]);
+      if (row.leafCode && row.leafCode !== code) dealerEvidence.set(row.leafCode, [...(dealerEvidence.get(row.leafCode) || []), { ...evidence, code: row.leafCode, canonicalCode: code }]);
+    });
+    if (!codes.size) return { ok: false, reason: "小订顶部范围为空", codes, areaCodes, districtCodes, mode: "none" };
+    return { ok: true, reason: "", codes, areaCodes, districtCodes, dealerEvidence, mode: "top_scope" };
   }
 
   function inPermission(row, scope) {
     if (scope.mode === "all") return true;
-    if (scope.mode === "area") return scope.areaCodes.has(text(row.areaCode));
-    if (scope.mode === "district") return scope.districtCodes.has(text(row.districtCode));
-    if (scope.mode === "code") return scope.codes.has(text(row.canonicalCode || row.code));
+    if (scope.codes?.has(text(row.canonicalCode || row.code))) return true;
     return false;
   }
 
@@ -196,6 +225,101 @@
     return targets.filter((row) => inPermission(row, scope) && inUpstream(row, upstream));
   }
 
+  function inSourceRowScope(row, upstream, dealerEvidence) {
+    const rawCode = text(row?.["一级经销商"]);
+    if (!rawCode) return false;
+    if (!upstream || upstream.mode === "all") return true;
+    const sourceArea = text(row?.["区域"]);
+    const sourceMac = text(row?.MAC);
+    const sourceDealerName = text(row?.["经销商简称"]);
+    if (upstream.mode === "area") {
+      if ([upstream.name, upstream.code].map(text).filter(Boolean).includes(sourceArea)) return true;
+      if (sourceNamesFromDealerEvidence(dealerEvidence, upstream).areas.has(sourceArea)) return true;
+      return [rawCode, ...canonicalScopeCandidateCodes(rawCode)].some((code) => validDealerEvidenceInUpstream(dealerEvidence?.get(code) || [], upstream));
+    }
+    if (upstream.mode === "district") {
+      if ([upstream.name, upstream.code].map(text).filter(Boolean).includes(sourceMac)) return true;
+      if (sourceNamesFromDealerEvidence(dealerEvidence, upstream).districts.has(sourceMac)) return true;
+      return [rawCode, ...canonicalScopeCandidateCodes(rawCode)].some((code) => validDealerEvidenceInUpstream(dealerEvidence?.get(code) || [], upstream));
+    }
+    if (upstream.mode === "code") {
+      const candidateCodes = [rawCode, ...canonicalScopeCandidateCodes(rawCode)];
+      const upstreamCode = text(upstream.code);
+      const upstreamName = text(upstream.name);
+      if (upstreamCode && candidateCodes.includes(upstreamCode)) return true;
+      if (upstreamName && [sourceDealerName, rawCode, ...candidateCodes].includes(upstreamName)) return true;
+      return candidateCodes.some((code) => validDealerEvidenceInUpstream(dealerEvidence?.get(code) || [], upstream));
+    }
+    return false;
+  }
+
+  function sourceNamesFromDealerEvidence(dealerEvidence, upstream) {
+    const rows = [];
+    if (dealerEvidence?.values) {
+      Array.from(dealerEvidence.values()).forEach((items) => {
+        (items || []).forEach((row) => {
+          if (validDealerEvidenceInUpstream([row], upstream)) rows.push(row);
+        });
+      });
+    }
+    return {
+      areas: new Set(rows.map((row) => text(row.area)).filter(Boolean)),
+      districts: new Set(rows.map((row) => text(row.district)).filter(Boolean))
+    };
+  }
+
+  function targetSourceRowsInSourceScope(sourceRows, upstream, dealerEvidence) {
+    return (sourceRows || []).filter((row) => inSourceRowScope(row, upstream, dealerEvidence));
+  }
+
+  function targetSourceRowsInScope(sourceRows, orgRows, scope, upstream) {
+    if (!scope.ok) return [];
+    if (scope.mode === "all") return sourceRows || [];
+    const orgs = (orgRows || []).map(normalizeOrg).filter((row) => row.brand === "MG" && row.code);
+    const byCode = buildOrgIndex(orgs);
+    return (sourceRows || []).filter((row) => {
+      const rawCode = text(row?.["一级经销商"]);
+      if (!rawCode) return false;
+      const base = {
+        originalCode: rawCode,
+        dealerShortName: text(row?.["经销商简称"]) || rawCode,
+        sourceArea: text(row?.["区域"]),
+        sourceMac: text(row?.MAC)
+      };
+      const exact = rawCode === "MQ257T" ? [] : uniqueCanonical(disambiguate(byCode.get(rawCode) || [], base));
+      const fallback = exact.length ? exact : uniqueCanonical(matchByText(orgs, base));
+      if (fallback.length) return fallback.some((org) => inPermission(org, scope) && inUpstream(org, upstream));
+      return [rawCode, ...canonicalScopeCandidateCodes(rawCode)].some((code) => validDealerEvidenceInUpstream(scope.dealerEvidence?.get(code) || [], upstream));
+    });
+  }
+
+  function duplicateSourceRows(sourceRows) {
+    const seen = new Set();
+    let duplicates = 0;
+    (sourceRows || []).forEach((row) => {
+      const rawCode = text(row?.["一级经销商"]);
+      if (!rawCode) return;
+      const key = canonicalScopeCandidateCodes(rawCode)[0] || rawCode;
+      if (seen.has(key)) duplicates += 1;
+      else seen.add(key);
+    });
+    return duplicates;
+  }
+
+  function canonicalScopeCandidateCodes(rawCode) {
+    if (text(rawCode) === "MQ257T") return ["MQ256T"];
+    return [];
+  }
+
+  function validDealerEvidenceInUpstream(evidenceRows, upstream) {
+    if (!evidenceRows.length) return false;
+    if (!upstream || upstream.mode === "all") return true;
+    if (upstream.mode === "area") return evidenceRows.some((row) => (upstream.code && text(row.areaCode) === upstream.code) || (upstream.name && text(row.area) === upstream.name));
+    if (upstream.mode === "district") return evidenceRows.some((row) => (upstream.code && text(row.districtCode) === upstream.code) || (upstream.name && text(row.district) === upstream.name));
+    if (upstream.mode === "code") return evidenceRows.some((row) => (upstream.code && text(row.code) === upstream.code) || (upstream.name && text(row.name) === upstream.name));
+    return false;
+  }
+
   function applyDrill(rows, drillPath = []) {
     return rows.filter((row) => drillPath.every((item) => item.level === "area" ? text(row.areaCode || row.area) === text(item.code || item.name) : item.level === "district" ? text(row.districtCode || row.district) === text(item.code || item.name) : true));
   }
@@ -208,10 +332,24 @@
       dealerName: text(item.dealerName),
       target: number(item.target),
       actual: number(item.actual),
+      dataUpdatedAt: text(item.dataUpdatedAt),
       periodStart: text(period?.actualRange?.startDate || period?.startDate || root.SmallOrderConfig?.PERIOD?.startDate),
       periodEnd: text(period?.actualRange?.endDate || period?.endDate || root.SmallOrderConfig?.PERIOD?.endDate),
       reason: text(item.reason),
       handling: text(item.handling)
+    };
+  }
+
+  function auditUnassignedRow(row) {
+    return {
+      originalCode: text(row.originalCode),
+      canonicalCode: text(row.canonicalCode),
+      dealerName: text(row.dealerName),
+      target: number(row.target),
+      reason: text(row.reason),
+      summaryIncluded: true,
+      drilldownAttributionStatus: "unassigned",
+      handling: "source_in_summary_unassigned_to_drilldown"
     };
   }
 
@@ -225,13 +363,23 @@
     const validPrimaryMissDetailsMatch = specialRows.length === validPrimaryMissCodes.size
       && Object.entries(qa.validPrimaryMisses || {}).every(([code, target]) => validPrimaryMissDetails[code] === target)
       && Object.keys(validPrimaryMissDetails).every((code) => validPrimaryMissCodes.has(code));
+    const sourceTargetTotal = sourceRows
+      .filter((row) => text(row?.["一级经销商"]))
+      .map((row) => parseTargetValue(row))
+      .reduce((sum, row) => sum + row.value, 0);
+    const assignedTargetTotal = mapped.targets.reduce((sum, row) => sum + row.target, 0);
+    const unassignedRows = mapped.anomalies.filter((item) => item.anomalyType === "organization_unmapped");
     const audit = {
       sourceRows: sourceRows.length,
       summaryRows: mapped.summaryRows,
       configuredRows: mapped.targets.length,
       sourceUniqueCodes: new Set(sourceCodes).size,
       canonicalUniqueCodes: new Set(mapped.targets.map((row) => row.canonicalCode).filter(Boolean)).size,
-      targetTotal: mapped.targets.reduce((sum, row) => sum + row.target, 0),
+      targetTotal: assignedTargetTotal,
+      sourceTargetTotal,
+      assignedTargetTotal,
+      unassignedTargetTotal: unassignedRows.reduce((sum, row) => sum + number(row.target), 0),
+      unassignedRows: unassignedRows.map(auditUnassignedRow),
       zeroTargetRows,
       areaCount: new Set(mapped.targets.map((row) => row.areaCode || row.area).filter(Boolean)).size,
       unmappedRows: mapped.anomalies.filter((item) => item.anomalyType === "organization_unmapped").length,
@@ -265,6 +413,49 @@
     return audit;
   }
 
+  function auditScopedTargets(sourceRows, mapped, targets) {
+    const scopeSourceRows = (sourceRows || []).filter((row) => text(row?.["一级经销商"])).length;
+    const scopedParsedTargets = (sourceRows || []).filter((row) => text(row?.["一级经销商"])).map((row) => parseTargetValue(row));
+    const scopeSourceTargetTotal = scopedParsedTargets.reduce((sum, row) => sum + row.value, 0);
+    const invalidTargetRows = scopedParsedTargets.filter((row) => !row.ok).length;
+    const scopeMappedRows = mapped.targets.length;
+    const scopeMappedTargetTotal = mapped.targets.reduce((sum, row) => sum + row.target, 0);
+    const scopeUniqueDealerCount = new Set(mapped.targets.map((row) => row.canonicalCode).filter(Boolean)).size;
+    const scopeTargetTotal = (targets || []).reduce((sum, row) => sum + row.target, 0);
+    const scopeUnmapped = mapped.anomalies.filter((item) => item.anomalyType === "organization_unmapped").length;
+    const duplicateTargetRows = Math.max(0, scopeMappedRows - scopeUniqueDealerCount);
+    const scopeUnmappedTargetTotal = mapped.anomalies.filter((item) => item.anomalyType === "organization_unmapped").reduce((sum, row) => sum + number(row.target), 0);
+    const sourceDuplicateTargetRows = duplicateSourceRows(sourceRows);
+    const audit = {
+      scopeSourceRows,
+      scopeMappedRows,
+      scopeSourceTargetTotal,
+      scopeMappedTargetTotal,
+      scopeUniqueDealerCount,
+      scopeTargetTotal,
+      sourceTargetTotal: scopeSourceTargetTotal,
+      assignedTargetTotal: scopeMappedTargetTotal,
+      unassignedTargetTotal: scopeUnmappedTargetTotal,
+      unassignedRows: mapped.anomalies.filter((item) => item.anomalyType === "organization_unmapped").map(auditUnassignedRow),
+      scopeUnmapped,
+      scopeUnmappedTargetTotal,
+      invalidTargetRows,
+      duplicateTargetRows,
+      sourceDuplicateTargetRows
+    };
+    const checks = [
+      ["invalidTargetRows", audit.invalidTargetRows === 0],
+      ["duplicateTargetRows", audit.duplicateTargetRows === 0 && audit.sourceDuplicateTargetRows === 0]
+    ];
+    audit.contractOk = checks.every(([, ok]) => ok);
+    const failedKeys = checks.filter(([, ok]) => !ok).map(([key]) => key);
+    if (audit.contractOk) audit.contractError = "";
+    else if (failedKeys.includes("duplicateTargetRows")) audit.contractError = "当前范围存在重复目标配置，小订战报数据暂不完整";
+    else if (failedKeys.includes("invalidTargetRows")) audit.contractError = "当前范围存在无效目标配置，小订战报数据暂不完整";
+    else audit.contractError = "当前范围目标配置不完整，小订战报数据暂不可用";
+    return audit;
+  }
+
   root.SmallOrderContract = {
     text,
     number,
@@ -277,8 +468,16 @@
     inPermission,
     inUpstream,
     visibleTargets,
+    targetSourceRowsInScope,
+    canonicalScopeCandidateCodes,
+    sourceNamesFromDealerEvidence,
+    validDealerEvidenceInUpstream,
+    inSourceRowScope,
+    targetSourceRowsInSourceScope,
     applyDrill,
     normalizeAnomaly,
-    auditTargets
+    auditTargets,
+    auditScopedTargets,
+    parseTargetValue
   };
 })(typeof window !== "undefined" ? window : globalThis);

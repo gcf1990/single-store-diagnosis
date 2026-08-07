@@ -1,5 +1,282 @@
 # 变更记录
 
+## [v2.17] - 2026-08-07
+
+### a310 有效经销商白名单 SQL 字段修复（已发布 q084 测试包，未commit/push）
+- 用户报错：线上 `/api/data-source/execute-sql-query` 查询 a310 时返回 `UNRESOLVED_COLUMN.WITH_SUGGESTION`，提示 `一级经销商代码` 不存在，建议字段包含 `父级经销商代码`。
+- 根因：`multi-store-super-app/filter-api.js` 的 SQL 快路径直接查询了 a310 不存在的 `一级经销商代码 / 父经销商简称` 物理字段；真实 schema 是 `父级经销商代码 / 父级经销商简称`。
+- 修复：SQL 改为 `父级经销商代码 AS 一级经销商代码`、`父级经销商简称 AS 父经销商简称`，保持下游既有字段名兼容；preview fallback 同时兼容真实字段与别名字段。
+- 缓存：`index.html` 的 `filter-api.js` cache busting 升级为 `20260807-dealer-parent-field-v217`，避免浏览器继续使用旧脚本。
+- 发布边界：只发布测试 App `q0844640cf6734877a3193d6`；发布包 `settings.environment=test` 并跳测试单店 `r8ce093b6d93143d8aa6852f`，保留生产单店映射 `aca59d2e2e60f4be4b8b93ac`；共享源码 `settings.json` 保持 `environment=production`，未触达生产 App、旧 App 或新 App。
+- 验证：真实 a310 SQL 返回 5 行；staging Node `256/256`、lint `62 files`、build PASS、PC `137/137`、audit high `0`、source/dist `35/35`、隐私扫描 `0`、zip 完整性 PASS。
+- 发布证据：URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`，平台回执 `operation=update`、`version=0.1.0`、`artifact=dist.0.1.0.zip`、`fileKey=288c4c84-5d0c-4e2d-9c1b-2461087061b5`；发布目录 `/tmp/multistore-q084-a310-test.pRJUOG/multi-store-super-app`；最终 zip SHA-256=`73a27fa3fed0a29c890898f1adfe9567390b8e02ca8ca65d5169067f2d53e89e`，`186478` bytes，`38` 个 dist 文件；匿名入口 HTTP `401` 仅证明登录保护，未做登录态业务 UI 验收，未 commit/push。
+
+## [v2.16] - 2026-08-06
+
+### PC 顶部销售总览 raw 汇总范围放开（已发布 q084 测试包，未commit/push）
+- 用户确认：截图红框中的顶部“销售总览”目标摘要（订单目标、订单达成、零售目标、零售达成、时间进度）以及 `销售指标 / 过程指标` 七张卡，不再与 `validDealers` 有效门店白名单求交。
+- 新口径：顶部汇总在相同品牌、日期、上游大区/小区/经销商、车系和罗盘 RLS 条件下，直接按 raw 销售事实、raw 目标源和 `monthlyTarget.targetActuals` 加总；“不限制门店范围”只表示不叠加 `validDealers` 二次过滤，不表示绕过罗盘 RLS，也不移除品牌、日期、上游组织或车系筛选。
+- 目标达成分子补充：订单/零售达成分子为 `monthlyTarget.targetActuals` 在上游筛选/RLS 后的直接加总，不要求 actual 自然键先命中有效门店或已配置目标行。
+- 覆盖关系：本版本显式覆盖 v2.08 “白名单外不参与顶部或行合计”中的顶部限制；不覆盖行/明细限制。
+- 保持边界：非顶部链路保持 v2.15 既有合同不变，不因顶部 raw 改动扩权或改口径；订单 target-only 明细仍保留既有不与 `validDealerMap` 求交的行为，零售门店目标和销售事实行仍按既有 scoped 规则。
+- 实施边界：不新增查询、不改数据源、不改 `data-api.js` 数据加载、不向其他 app 逻辑扩散；允许 `metrics.js` 拆分 raw summary 与 scoped details、`app.js` 做最小空态/占位分流，并补 `metrics-scope`、`monthly-target`、`funnel` 定向测试。
+- 完成证据：Node `240/240`、lint `62 files`、build PASS、PC `137/137`、audit high `0`、`git diff --check` PASS、source/dist `36/36`；Code Review Stage1/2 PASS，P0/P1/P2=`0/0/0`；QA PASS，P0/P1/P2=`0/0/0`。
+- 发布证据：多店 App `q0844640cf6734877a3193d6` 已更新，URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`，平台回执 `operation=update`、`version=0.1.0`、`artifact=dist.0.1.0.zip`、`fileKey=5c91228a-6b73-4071-bd52-6af356e0f8fd`；发布目录 `/tmp/multistore-q084-v216-test.c1uWVY/multi-store-super-app`；发布包 SHA-256=`02275da1d42035da01a66cb0284eca3a33aac36d56fe5fc443502f9111ef1d0e`，`183353` bytes，`38` 个 dist 文件，`unzip -t` PASS，隐私扫描 `0`；`dist/settings.json` 为 `environment=test` 并跳测试单店 `r8ce093b6d93143d8aa6852f`，同时保留生产单店映射 `aca59d2e2e60f4be4b8b93ac`；共享源码 `settings.json` 保持生产基线。
+- 非业务测试稳定性修复边界：fixture-only iron skeleton guard；外链 Playwright route 仅测试隔离，生产链接不变。
+- 文档同步：新增 `SCOPE-033`、`AC-437～AC-444` 和 `DEV-PLAN.md` Phase 3AU；当前已发布 q084，匿名入口 HTTP `401` 仅证明登录保护，未做登录态线上业务 UI 验收，未 commit/push。
+
+## [v2.15] - 2026-08-01
+
+### MG 07 小订投资人空组织筛选实际汇总修复（本地修复、Code Review/QA 完成，未发布/未commit/push）
+- 用户确认：投资人入口可出现空 `dealerCode` / 空组织筛选；目标表自身 RLS 可返回当前投资人可见目标，例如 5 店目标合计 `507`，此时实际也必须按同一投资人可见范围汇总。
+- 修复结果：不得因经销商维表 `经销商代码` 与小订事实 `一级经销商代码` 不一致，把投资人小订留存实际汇总为 `0`；已支持一级经销商代码与叶级门店/投资人可见门店范围的可证明映射，5 店案例为目标 `507`、累计小订 `110`、留存小订 `108`、退订小订 `2`。
+- 保持边界：小订实际固定 `品牌名称=MG`、`汇报车系名称='MG 07'`、固定小订期 `2026-07-29`～`2026-08-22`；目标分母继续按 v2.02/v2.03 source-row summary，不得被 `organizationRows`、valid primary、全量经销商维表或 canonical 可归因集合扣减。
+- 继承口径：三项小订指标继续独立取数；目标达成、缺口、落后和排序继续以 `retained_small_order / 当日首触留存小订数` 为分子；未配目标但有实际的门店实际继续计入父级累计和 summary 达成分子，门店层“未设目标/--”语义不变。
+- 异常语义：目标、实际、RLS、字段或映射不可证明时必须进入小订既有数据不完整/降级状态，不得静默伪造为 `0`；业务页面不得展示技术 key、RLS 细节或底层异常堆栈。
+- 降级边界：scope 内 0 命中/多映射降级为数据不完整且不伪 `0`，scope 外异常不污染当前投资人范围。
+- 非目标：不改销售模块、订单/零售目标、过程分析、打铁指标、导出、移动端、发布配置、顶部日期/车系独立，不新增小订专用 RLS/授权缓存/角色推断，不改目标 source-row summary。
+- 门禁证据：Node `235/235`、small-order Playwright `21/21`、lint PASS、build PASS、PC 二次 `137/137`；Code Review 与 QA 已完成；缓存版本串 P1 已修复并验证，`index.html` 与 `dist/index.html` 三脚本均为 `20260801-mg07-investor-scope-v215`，index-version `3/3`、build PASS。
+- 发布边界：本轮未发布、未 commit/push，线上投资人登录态未验收。
+- 文档同步：`Product-Spec.md` 顶部与 REQ-014 / AC-428～AC-436、`DEV-PLAN.md` Phase 3AT 和 P0 覆盖矩阵同步为本地完成状态。
+
+## [v2.14] - 2026-07-31
+
+### PC 打铁指标 CSV 宽表导出生产发布记录（已发布 re37，发布包 QA PASS，未commit/push）
+- 本次仅补充 v2.13 代码的生产发布事实，不改 PC 打铁指标 CSV 宽表导出合同、不改打铁 11 项公式、取数、筛选、二级 Tab、外链、移动端、依赖或业务口径。
+- 发布源：GitHub fresh clone `xiaoxia0026/retail-smart-sales-process-multiStores` 分支 `feature/260731-PC`，source HEAD=`372cb1e9a560985a69520975caaf3762d76e9373`；发布目录 `/private/tmp/multistore-prod-release.2Z9nvC`。
+- 生产配置：root/dist/zip settings 均为 `environment=production`；多店生产 App `re37c3447cb0443a68a36a40`，生产入口 `https://rdata-pv.rauto.com/open-apps/re37c3447cb0443a68a36a40/`；跳转单店生产 App `aca59d2e2e60f4be4b8b93ac`，生产单店 URL `https://rdata-pv.rauto.com/open-apps/aca59d2e2e60f4be4b8b93ac/`。
+- 静态资源版本：`iron-metrics-view.js?v=20260731-iron-export-v213`、`app.js?v=20260731-iron-export-v213`。
+- 发布命令：`guancli app publish --app-id re37c3447cb0443a68a36a40 --path /private/tmp/multistore-prod-release.2Z9nvC -f json`；平台回执 `operation=update`、`appId=re37c3447cb0443a68a36a40`、`version=0.1.0`、`artifact=dist.0.1.0.zip`、`fileKey=f88698dc-cd1a-4ed9-95f8-0b345f394a65`。
+- 发布包证据：zip SHA-256=`8127f178b73d8b88bc16ba47847adf13c76fc5a4c932aeec576a99ef63ee8554`，大小 `182174` bytes，`38 files`，`unzip -t` PASS；zip 未包含 `node_modules/test-results/playwright-report/validation`，敏感扫描无命中。
+- 门禁与 QA：`npm ci` PASS，Node `231/231`，PC `137/137`，lint `62 files`，build PASS，audit critical `0`；独立 QA PASS，P0/P1=`0/0`，P2=`1` 仅登录态线上 UI/HAR 未验收。
+- 验收边界：匿名生产入口 HTTP `401` 仅证明登录保护，不代表登录态业务 UI 验收；未创建新 App，未发布测试 App，未 commit/push 本地文档。
+
+## [v2.13] - 2026-07-31
+
+### PC 打铁指标 CSV 宽表导出（已发布 q084，发布包 QA PASS，未commit/push）
+- 用户反馈：打铁导出 CSV `/Users/chengfengguo/Downloads/大区邀约指标 7.csv` 当前是内部诊断长表，包含组织编码、指标编码、分子分母、同期值、来源状态、字段缺口和完整性等字段；该结构与前端一行一个组织、指标横向展示不一致。
+- 新合同：打铁 CSV 与前端表格同形；当前激活二级组每个当前组织范围对象只导出一行，首列使用当前层级前端首列表头/组织名称，后续按 `IronMetricsContract.metricsFor(section)` 顺序为每个指标连续输出 `<指标名>`、`<指标名>月环比`、`<指标名>周环比`。
+- 列数固定：邀约 7 项共 22 列，试驾 4 项共 13 列；导出不再输出组织代码、指标编码、分子、分母、月/周同期值、来源状态、字段缺口、完整性等内部诊断字段。
+- 展示语义：当前值格式与页面一致，百分比一位小数；月/周环比为百分点差，带 `+/-` 和 `%`；0 或缺失为 `--`；阶段错误为 `加载失败`，阶段加载为 `加载中`，当前期错误或不完整为 `数据不完整`。
+- 保持边界：导出仍复用现有入口、当前激活组、当前组织范围全量行；扁平态仍导出全部经销商；RFC4180 转义与公式注入防护不得回归。不改打铁 11 项公式、取数、筛选、二级 Tab、外链、移动端、发布配置或依赖。
+- 兼容旧合同：`Product-Spec.md` 既有扁平导出规则、AC-205 和 `docs/superpowers/specs/2026-07-22-打铁指标PC展示与下钻设计.md` 的历史字段清单保留为 v1.70/v1.75 内部诊断长表记录；自 v2.13 起不再约束当前打铁 CSV 字段，当前字段以 AC-423～AC-427 为准，旧设计文档仍约束入口、范围、行序、UI、下钻和可访问性。
+- 文档同步：新增 `REQ-012 / AC-423～AC-427`；本次仅同步发布记录，不改打铁指标业务口径。
+- 发布证据：测试 App `q0844640cf6734877a3193d6` 已于 `2026-07-31` 更新，URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`，平台回执 `operation=update`、`version=0.1.0`、`artifact=dist.0.1.0.zip`、`fileKey=8cbbaca1-270e-4b3b-9a8a-4446c50d2fe0`；发布包 `/private/tmp/multistore-q084-iron-export.uQuVLL/dist.0.1.0.zip`，SHA-256=`83d68974f1bb73203d73ecefbbb33ece4533bfc458f441018b02f09ca0f64215`，`182174` bytes，`38 files`，`unzip -t` PASS，未包含 `node_modules/test-results/playwright-report/validation`。
+- 发布边界：zip 内 `dist/settings.json` 为 `environment=test`，测试单店 URL 为 `r8ce093b6d93143d8aa6852f`；共享源码 `multi-store-super-app/settings.json` 保持 `environment=production`；`iron-metrics-contract/model/api/view.js` 和 `app.js` cache busting 使用 `20260731-iron-export-v213`。本地门禁 Node `231/231`、PC `137/137`、lint `62 files`、build PASS、audit critical `0`；Code Review PASS P0/P1/P2=`0/0/0`，发布 QA PASS P0/P1=`0/0`，P2 仅登录态线上 UI/HAR 未验收与文档记录。匿名 URL HTTP `401` 仅证明登录保护，不代表登录态业务 UI 验收；未 commit/push，未发布生产。
+
+## [v2.12] - 2026-07-30
+
+### MG 07 小订达成表现下钻不污染摘要（已发布 q084，发布包 QA PASS，未commit/push）
+- 用户确认合同：在 `小订达成表现` 点击 `查看小区`、`查看门店` 或 `返回上一级` 时，下方表格层级和行数据可以变化；上方摘要六卡及达成进度比较条必须保持战报首次进入、且匹配当前顶部筛选范围的数值和状态。
+- 修复边界：模型层拆分 `summaryViewLevel + 空 drillPath` 的摘要基准范围与当前 `viewLevel/drillPath` 的表格下钻范围；摘要小订目标、留存小订、累计辅助、今日新增、目标达成、时间进度、第六动态位、对象总数、更新时间和比较条不再随表格下钻变化。
+- 保持不变：顶部品牌/大区/小区/门店/权限变化仍可重新生成摘要；表格 `HQ -> 大区 -> 小区 -> 门店` 下钻、返回上级、行级今日新增、留存、退订、缺口排序和操作列继续按当前表格范围展示。
+- 非目标：不提交、不改数据源、不改目标/实际/留存/退订/今日新增字段口径、不改共享源码生产配置或依赖；仅隔离 staging 使用 `environment=test` 发布 q084。
+- 验收结果：已补 Node 模型测试和 PC 集成测试，覆盖 `HQ -> 大区 -> 小区 -> 门店 -> 返回上级` 表格变化且摘要六卡和进度条 invariant；本轮 staging 小订下钻专项 Playwright `1/1` PASS，源目录 Node `230/230`、lint `62 files`、build PASS，受控联网审计 `npm audit --omit=dev --audit-level=high` 为 `0`。
+- 发布证据：测试 App `q0844640cf6734877a3193d6` 已于 `2026-07-30` 更新，`operation=update`、`version=0.1.0`、URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`、发布工具实际上传包 SHA-256=`428ed52a5c337c91af02a4674e4cac6261a8dd00c9c4755c972512994c34e50f`、`182343` bytes、`38 files`；标准回执未返回 `fileKey`。
+- 验收边界：线上登录态 UI 待验收；源目录 PC 全量首轮有 1 个无关打铁 Tab 加载骨架断言失败，按本轮授权不作为小订下钻发布阻断，未处理该打铁问题。
+
+## [v2.11] - 2026-07-30
+
+### MG 07 小订留存展示回显（已发布 q084，发布包 QA PASS，未commit/push）
+- 用户确认精确 UI 合同：摘要原 `累计小订` 主卡改为 `留存小订`，主值使用 `retained_small_order / 当日首触留存小订数`；该卡辅助文案由 `退订 <cancelled>` 改为 `累计 <actual_small_order>`。
+- 展开 `小订达成表现` 原 `累计小订` 列改为 `留存小订`，行值使用 `row.retained`。
+- 保持边界：表内 `退订小订` 列和 `row.cancelled` 不改名、不重算；目标达成、应达缺口、落后、排序继续使用 retained 分子；今日新增、目标源、固定小订期、顶部范围/RLS、车系独立和三项源字段独立取数不变。
+- 非目标：不提交、不改依赖、不触达 `re37/x944/新App`，不做登录态 UI 代验收。
+- 验收结果：已覆盖 `actual_small_order != retained_small_order` 时摘要留存主值、累计辅助、表格留存列和退订列均使用正确字段；小订 PC 定向 `21/21`、lint `62 files`、build PASS；`npm audit --audit-level=high` 为 `0`，隐私扫描和 unzip 校验通过。
+- 发布证据：测试 App `q0844640cf6734877a3193d6` 已于 `2026-07-30` 更新，`operation=update`、`version=0.1.0`、URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`、zip SHA-256=`d9ffd234f3c5987396b49ee67f3b734e13049180db242e9adcdf8e4d8cb80b06`、`180 KB`、`38 files`；标准回执未返回 `fileKey`。
+- 验收边界：staging 的 2 条 `production` 配置断言失败来自本次按要求使用 `environment=test`，不属于小订功能失败；线上登录态 UI 待验收。
+
+## [v2.10] - 2026-07-30
+
+### MG 07 小订目标达成分子改为留存小订（本地修复，未发布/未commit/push）
+- 用户确认口径：小订“目标达成”的实际分子从累计小订改为 `retained_small_order / 当日首触留存小订数`。
+- 严格边界：`累计小订` 卡、展开表 `累计小订` 列仍使用 `actual_small_order / 当日首触小订数`；`今日新增` 仍使用独立日查询当日小订数；`退订小订` 仍使用 `cancelled_small_order / 当日首触小订退订数`。不得用 `retained_small_order + cancelled_small_order` 或累计/退订互相重算任一指标。
+- 影响范围：所有依赖目标达成实际分子的计算统一改用留存小订，包括 summary `目标达成`、达成/时间进度比较条实际进度、应达缺口、落后对象数/状态、`小订达成表现` 表的目标达成值和按应达缺口排序。目标为 0、未设目标、实际源不可用、今日新增边界和上级目标分母语义不变。
+- 非目标：不改目标源、累计小订展示、今日新增、退订小订、固定小订期、顶部范围/RLS、车系独立、发布配置、依赖、线上 App、commit/push。
+- 完成状态：已本地实现并验证；定向小订模型/API `48/48`、Node 全量 `230/230`、lint `62 files`、build PASS；PC 全量首跑 `133/135` 后更新旧达成断言，失败两项定向复跑 `2/2` PASS。未发布、未 commit/push。
+- 验收要求：必须覆盖 `actual_small_order != retained_small_order` 且 `retained_small_order + cancelled_small_order != actual_small_order` 时，累计仍显示 actual，达成率=`retained/target`，缺口/落后/排序均按 retained，今日新增不受影响。
+
+## [v2.09] - 2026-07-30
+
+### MG 07 过程车系别名映射修复（本地修复、两阶段 Code Review、独立 QA 完成，未发布/未commit/push）
+- 用户确认口径：销售筛选项 `MG 07` 在邀约和试驾接待模块的四个运行时打标来源中，必须同时关联原始值 `MG 07`、`MG07 EV`、`MG07 DMH`；`MG7` 明确不关联。
+- 四源字段边界：邀约历史 `n418e47dacdb94291993d3d9.周期首次意向闭环车系名称`，邀约实时 `ta1978fc86ae745009d0eff4.周期首次意向闭环车系名称`，试驾历史 `g9da02067b8a6432486f58f9.车系名称`，试驾实时 `ie2f283f63154402282c4968.闭环车系`。实时试驾的 `车系名称` 只作审计对照，不得作为过滤字段。
+- 已验证真实数据样本：邀约历史字段原值 `MG 07`；邀约实时同字段原值 `MG07 EV/MG07 DMH`；试驾历史字段 `车系名称` 原值 `MG07 EV`；试驾实时组合 `闭环车系=MG 07、车系名称=MG07 EV`。
+- 继承边界：当前、上月同期、上周同期三阶段和多选集合必须同构继承该映射；具体车系不得 fallback 全部车系；查询、字段、映射或完整性失败均 fail-closed 为 `数据不完整`。
+- 非目标：不改 UI、公式、其他车型映射、数据源、权限、导出、移动端、发布配置或依赖；本次仅本地修复，未发布、未 commit/push。
+- 完成状态：已本地实现并通过两阶段 Code Review 与独立 QA；Object.freeze 三别名；定向 `11/11`、Node `230/230`、lint `62`、build PASS、PC `135/135`、source/dist `36/36`；Code Review Stage1/2 PASS，P0/P1/P2=`0/0/0`；QA PASS，P0/P1/P2=`0/0/0`。未发布、未 commit/push。
+- 文档同步：新增 `SCOPE-032`、`AC-413～AC-416`、`ASM-026` 和 DEV-PLAN Phase 3AR；测试验收要求覆盖四源 SQL 映射条件、current/month/week、多选集合和反向 `MG7` 排除。
+
+## [v2.08] - 2026-07-29
+
+### a310 经销商维表 SQL 直查首屏瘦身（已发布 q084，未commit）
+- 本轮只优化 `validDealers` 白名单取数路径：经销商维表 `a310ff90fddff4b6283841c6` 默认通过 `/api/data-source/execute-sql-query` 查询，不再在默认首屏成功路径使用 `preview-with-filter-async/readPreviewFile` 拉取 a310 大包。
+- SQL 只查白名单和组织所需字段，并服务端下推 `开业`、品牌、权威大区、一网/非二网、官网显示名称、大区/小区/门店范围；返回后仍执行既有 `filterValidDealers` 前端兜底校验。
+- `validDealers` 权限/有效一网白名单语义不变；销售事实仍与白名单取交集，白名单外不展示、不参与顶部或行合计。
+- preview 仅在 SQL 失败时作为显式兜底，不允许 SQL 成功时并行预热或额外读取 a310 preview。
+- 非目标：不改销售/过程/打铁/MG07 小订口径，不改角色识别、下钻、导出、移动端、共享源码发布配置或依赖；仅 staging 将 `settings.environment` 置为 `test` 发布 q084，不 commit/push。
+- 完成证据：真实 a310 `execute-sql-query` 完整 WHERE 可返回 MG 开业非二网官网门店样例；Code Review 复审 PASS，QA PASS，P0/P1/P2=`0/0/0`；专项 `3/3`、Node `228/228`、lint `62 files`、build PASS、PC `135/135`；source/dist `filter-api.js` 一致，SHA-256=`93a097a5da0d5fb86f95160dc067decc226ebae74408cc017bbe145293adec07`。发布证据：测试 App `q0844640cf6734877a3193d6` 已于 `2026-07-29` 更新，`operation=update`、`version=0.1.0`、`fileKey=3ac8e19e-7c44-4fd7-b5d2-ff7d073185a3`、URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`、zip SHA-256=`2b624ff4e2f635991e745a16a02c1adf96613d44736ded80288ab62753ecd2eb`、`182212` bytes、`38` files；zip 内 settings 为 `test`，未包含 `node_modules/test-results`，隐私扫描 `0`。匿名入口 HTTP `401` 仅证明登录保护；线上登录态 UI/HAR 未验收，未 commit/push。
+
+## [v2.07] - 2026-07-29
+
+### MG 07 小订留存指标展示移除（已发布 q084，发布后 QA PASS，未commit）
+- 用户确认：`累计小订`、`留存小订`、`退订小订` 为三项独立预计算指标，退订按退订时间统计，可能包含历史测试小订当日退订；禁止用累计、退订、留存三者互相重算或做守恒推导。
+- 展示变更：`累计小订` 卡片辅助文案移除留存，仅展示 `退订 <cancelled_small_order>`；`小订达成表现` 表格移除 `留存 / 退订` 列，改为只展示 `退订小订`。
+- 数据边界：API、contract、model 继续读取和保留 `retained_small_order / 当日首触留存小订数`，不删除字段、不改变 SQL 聚合；`累计小订` 仍来自 `actual_small_order_all / 当日首触小订数`，`退订小订` 仍来自 `cancelled_small_order / 当日首触小订退订数`。
+- 非目标：不改今日新增、小订目标、目标达成、时间进度、应达缺口、状态、排序、下钻、对象总数、发布配置或依赖；不提交。
+- 验收要求：界面不得出现“留存”字样；累计和退订仍分别来自各自源字段；SQL/model 仍保留 retained 字段供后台口径和审计使用。
+- 发布证据：测试 App `q0844640cf6734877a3193d6` 已于 `2026-07-29` 更新，`operation=update`、`version=0.1.0`、URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`、zip SHA-256=`4d3d5def1192de6c61dad72e2d6ea4fa7d192ee81d0bfd8d43bb2d99b9f4923c`；线上登录态 UI 待验收。
+
+## [v2.06] - 2026-07-29
+
+### PC 销售指标与销售表现优先首帧（已发布 q084，未commit）
+- 用户反馈：截图中 `销售指标` 和 `门店销售表现` 首屏仍慢，本轮优先提升这两块的首帧，不扩大到销售口径或其他模块重构。
+- 根因边界：当前 `app.js` 先串行等待车系枚举，再启动 `validDealerScope + sales`；月目标在核心销售完成前启动并竞争；销售核心完成后同一任务立即启动小订、过程、打铁，可能抢占浏览器首帧绘制；默认销售 Tab 仍触发打铁 18 次 SQL。
+- 新增合同：`REQ-013 / AC-397～AC-405` 与 DEV-PLAN Phase 3AP。默认全部车系时，车系枚举 pending 不得阻塞销售核心查询和有效门店范围查询；带已选车系时仍必须校验合法性，非法值不得扩大为全部车系。
+- 首帧门禁：销售首帧前不得启动月目标、小订、过程比较期或打铁；销售首帧后月目标、小订、过程 current 可分级后台加载；过程 previous/week 首次进入过程 Tab 后加载，或采用等价的不抢销售首帧策略。
+- 打铁懒加载：初始销售 Tab 不得触发打铁 18 次 SQL；首次点击 `打铁指标` Tab 才启动，且同一筛选 identity 下切换 Tab 必须复用结果或 pending，不重复启动同一批 SQL。
+- 竞态与错误：销售核心、车系枚举、月目标、小订、过程和打铁旧请求均需按 `loadToken` / request identity 防写回，必要时取消；销售核心失败继续现有销售错误态，不用 secondary loader 成功态掩盖。
+- 非目标：不改销售指标和销售表现业务口径、不改 `validDealers` 权限门禁、不改日期/车系/组织筛选、不改目标/小订/过程/打铁口径、不改导出、移动端、发布配置或依赖。
+- 验收矩阵：必须用 deferred Promise 证明车系枚举 pending 时默认全部车系的 sales + dealerScope 可完成并渲染；证明销售渲染事件发生在所有 secondary loader start 之前；证明初始销售 Tab 不触发打铁 18 SQL；证明首次点击打铁 Tab 后只启动一次且复用；并完成现有功能回归。
+- Review-fix 闭环：两轮修复后已将诊断 I/O 移到销售首帧后、过程 current 不再刷新动态诊断，并补齐生产测试 hooks 门禁。
+- 当前状态：v2.06 / AC-397～AC-405 已本地实现并发布测试 App，独立 Code Review Stage 1/2 PASS，最终 QA PASS，P0/P1/P2=`0/0/0`；AC-397～AC-405 已按本地实现、独立 Code Review 与最终 QA 通过关闭。
+- 已验证：QA 专项首帧 `8/8`；process `8/8`；iron `12/12`；Node `npm test` `226/226`；lint `61 files`；PC `npm run test:pc` `135/135`；临时 Vite build PASS；audit critical `0`；diff-check PASS；source/dist `app.js` SHA 一致。发布前 staging 复核 Node `225/225`、PC `135/135`、lint `61 files`、build PASS、audit critical `0`、隐私扫描 `0`。
+- 视觉验证：1440 浅色销售首屏正常；1280/1440 深色抽查无布局问题、无横向溢出。
+- 后续技术债：`data-api` option 直接单测、`app.js/data-api.js` 拆分、线上真实 HAR/登录态性能验收；均非 QA 缺陷。
+- 发布证据：测试 App `q0844640cf6734877a3193d6` 已于 `2026-07-29` 更新，`operation=update`、`version=0.1.0`、`fileKey=6a73b471-908a-4368-b3b8-485ae051a2c5`、URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`、zip SHA-256=`25afbf62737eb5f54a7715090056c38d502734db6f50db1b4bee226560496c37`、`181153` bytes、`38` files；staging/zip settings 为 `test`，shared source settings 保持 `production`，仅触达 q084。匿名入口 HTTP `401` 仅证明登录保护；线上登录态 UI/HAR 未验收，未 commit/push。
+
+## [v2.05] - 2026-07-29
+
+### PC 双空人员画像按总部入口加载（本地开发、回归与独立 QA 完成，未发布/未commit）
+- 用户最新确认：账号 `13917267856` 的 `marketing_userType` 与 `marketing_orgType` 均为空时，PC 入口按总部角色进入页面；不同区域角色由外部壳应用识别，并通过上游大区/小区/门店筛选范围控制可见数据。
+- 角色边界：仅“双空”（字段缺失、`null`、空字符串或纯空白）按总部入口；`RFS/MAC/HQ` 仍按既有组织类型识别；`marketing_userType=4 + 未识别非空 orgType` 仍为可审计兼容/总部候选态；非法类型和非空未知枚举继续按既有安全策略 fail-closed 或兼容处理，不因本轮扩权。
+- 范围边界：双空总部入口不得绕过外部壳上游 `brand / region / district / dealer` 参数、罗盘行权限和有效经销商白名单 `validDealers`；上游指定大区时入口层级为小区，上游指定小区或门店时入口层级为门店。
+- 小订边界：MG 07 小订继续复用顶部筛选范围和目标 DS RLS；本轮不新增小订独立角色、HQ、`nationalComplete` 推断，不修改小订目标、摘要、今日新增或下钻口径。
+- 验收矩阵：覆盖双空可进入页面且无角色异常、双空+大区从小区层展示、双空+小区从门店层展示、双空下 `validDealers` 不扩大、非法类型/未知非空值仍按安全策略处理。
+- 当前状态：本地开发、回归与独立 QA 已完成；AC-395～AC-396 已关闭。门禁为 Node `225/225`、PC `127/127`、lint `60 files`、build PASS；独立 QA PASS，P0/P1/P2=`0/0/0`。未发布、未 commit/push，线上登录态未验收。
+
+## [v2.04] - 2026-07-29
+
+### MG 07 小订今日新增卡与达成表列（已发布 q084，发布后 QA PASS，未commit）
+- 用户确认采用方案 A：`MG 07小订战报` 摘要在 `累计小订` 后新增独立第 3 张卡 `今日新增`；原 `目标达成`、`时间进度` 和动态层级位顺延，动态层级位成为第 6 张卡。
+- 展示口径：`今日新增` 卡只显示当天小订数，主值带正号，例如 `+216`；不得增加“当日小订”等辅助小字或解释文案。运行时当天无数据、尚未开始、统计日不在固定小订期内或实际源不可用时显示 `--`。
+- 日期边界：`今日新增` 的统计日为运行时自然日，但必须落在固定小订期 `2026-07-29`～`2026-08-22`；早于开始或晚于结束均显示 `--`，不得跨期统计；该口径独立于顶部销售日期和车系筛选。
+- 展开表：`小订达成表现` 在 `累计小订` 后新增 `今日新增` 列，并按 HQ -> 大区 -> 小区 -> 门店逐级汇总；该列只作为当日实绩信息，不参与小订目标、目标达成、时间进度、应达缺口、状态、排序或下钻规则。
+- 实现边界：继承 v2.03 当前范围/RLS、source-row summary 目标、总部全国全范围目标 `30001`、未归属目标静默审计、现有真实数据和独立下钻规则；不新增数据源、不捏造字段/API。今日新增字段与日期过滤以 MG07 实际源日期字段反查实现。
+- 当前状态：实施完成；AC-390～AC-394 已按本地 QA 状态关闭。最终独立 Code Review Stage 1 PASS，P0/P1/P2=`0/0/0`；Stage 2 仅 audit 证据曾初始缺失，后续独立 QA 执行 `npm audit --audit-level=high` 为 `0`。
+- QA 与门禁：最终独立 QA PASS，P0/P1/P2=`0/0/0`；Node `225/225`、PC `127/127`、lint `60 files`、build PASS、source-dist `36/36`、v204 cache。
+- 审计边界：`postcss` lock=`8.5.24`；`npm audit --audit-level=high` 为 `0`。
+- 截图证据：v2.04 可用截图仅限 `qa-screenshots/mg07-small-order-demo-repair/*fixture*.png` 和对应 results；旧 `qa-screenshots/mg07-small-order-final/` 为 v2.03 前历史截图，不作为 v2.04 证据，不删除历史文件。
+- 发布证据：测试 App `q0844640cf6734877a3193d6` 已于 `2026-07-29` 更新，`operation=update`、`version=0.1.0`、URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`、zip SHA-256=`34c6501b408be9ba67ed0c8a10017d6158e8b6032d78a3662143fe4f90ffd2ca`；线上登录态 UI 待验收。
+- 文档同步：更新 `Product-Spec.md`、`Product-Spec-CHANGELOG.md`、`DEV-PLAN.md` 和 `docs/superpowers/specs/2026-07-27-mg07-small-order-dashboard-design.md`；未 commit/push。
+
+## [v2.03] - 2026-07-28
+
+### MG 07 小订未映射目标静默审计合同（已发布 q084，发布后 QA PASS，未commit/push）
+- 用户最新明确：业务页面不要展示“未归属下级/不影响目标总数”类提示。总部、大区、小区、门店任一层级均不得展示未归属目标提示、警告、横幅、角标或状态说明。
+- 口径不变：所有层级摘要 `小订目标` 仍等于目标数据集 RLS 当前可见、且匹配当前顶部范围的目标源行 `MG07小订目标` 求和；无法映射到下级组织的目标行仍计入当前层级摘要目标和达成分母。
+- 审计保留：未归属目标只保留内部审计字段，用于核对子级下钻行合计与 summary 差额；不得伪造子级下钻行，不得暴露技术 key。
+- 错误策略不变：重复目标代码、非法数字、负数、小数、缺字段或当前范围目标总额不可证明时，仍按既有错误策略 fail-closed 或阻断，不因静默展示而吞错。
+- 实现完成：页面不展示未归属提示，旧 View 白名单删除；内部 audit 完整保留 `originalCode/canonicalCode/dealerName/target/reason/summaryIncluded/drilldownAttributionStatus/handling` 与 `unassignedTargetTotal/unassignedRows`。
+- 完成证据：Review Stage1/2 PASS P0/P1/P2=`0/0/0`；QA PASS P0/P1/P2=`0/0/0`；Node `221/221`；PC `125/125`；lint `60 files`；build PASS；source-dist 关键文件一致、构建复制清单 `36/36`；隐私 `0`；`npm audit` `0`。
+- 验收覆盖：全国 `30001`、线上缺陷值 `29714`、差额 `287`、`8` 家异常均保留回归覆盖；真实阻断错误策略不变。
+- 发布证据：测试 App `q0844640cf6734877a3193d6` 已更新，`operation=update`、`appId=q0844640cf6734877a3193d6`、`version=0.1.0`、`fileKey=157e9036-ff39-484f-a1b1-e771d9e2adf7`、URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`；实际平台 dist zip=`/private/tmp/mg07-v203-q084-staging.0bY2HJ/dist.0.1.0.zip`，SHA-256=`0b4041b25118404ed44839cfd29a2a5abaa22204e1df434dbf3e9b6e491591af`，`178731` bytes，`38 files`；staging 为 `test`，shared source 保持 `production`，仅触达 q084。
+- 发布后 QA：PASS，P0/P1/P2=`0/0/1`，P2 仅文档状态滞后且已由本次修复；包内旧提示 `0`、Node `38/38`、PC `3/3`、source-dist/隐私通过。
+- 验收边界：在线登录态浏览器核验未完成，原因是 Chrome 页签接管超时、IAB 无罗盘登录态；不得写成线上 UI 已验收。
+- 文档同步：更新 `Product-Spec.md`、`DEV-PLAN.md` 和 `docs/superpowers/specs/2026-07-27-mg07-small-order-dashboard-design.md` 的状态、展示边界、验收条款、完成证据和发布证据；未 commit/push。
+
+## [v2.02] - 2026-07-28
+
+### MG 07 小订目标源行汇总合同（需求已确认，待开发/未发布）
+- 用户最新纠偏：这不是“总部全国特殊处理”，而是所有层级的统一口径。总部、大区、小区、门店摘要 `小订目标` 均等于目标数据集 RLS 当前可见、且匹配当前顶部范围的目标源行求和。
+- 范围匹配：优先使用目标表 `区域 / MAC / 一级经销商` 与顶部 `brand / region / district / dealer` 匹配；不得用 valid primary、全量经销商维表、`organizationRows` 或 canonical 可归因集合的交集删除摘要分母。
+- 全国验收：总部全国若上游明确为“全部大区 + 全部小区 + 全部门店 / 总部全国范围”，摘要目标必须为 `30001`。线上显示 `29714` 是 v2.01 bug，差额 `287` 来自被错误扣除的未命中 valid primary 目标。
+- 组织映射边界：`organizationRows` 只做下钻归因、对象名称补全和审计，不作为权限系统或摘要分母过滤器。未归属目标行仍计入当前层级摘要目标和达成分母，但不得伪造成子级下钻行；子级行合计可小于摘要目标，差额必须可审计。业务页面展示边界已被 v2.03 覆盖为静默审计。
+- 保持不变：小订统计期固定 `2026-07-29`～`2026-08-22`；车系筛选不影响小订；未设目标但有实际仍计入累计和 summary 目标达成分子，门店层显示“未设目标/--”、不判落后、不显示风险，并允许作为未设目标实际行出现在小订达成清单；重复/非法目标仍 fail-closed 或告警；业务页面不得展示技术 key。
+- 文档同步：更新 `SCOPE-030 / REQ-014 / AC-372～AC-386`、数据规则、依赖说明、非功能要求、DEV-PLAN Phase 3AN 和 MG07 设计说明。发布边界仍只允许 `q0844640cf6734877a3193d6`，shared settings 保持 `production`，staging-only 使用 `test`，不触达 `re37/x944/新App`。
+
+## [v2.01] - 2026-07-28（已发布 q084，线上验证发现缺陷，已被 v2.02 替代）
+
+### MG 07 小订复用顶部范围合同（历史事实）
+- 用户纠偏：小订模块直接复用应用既有顶部品牌/大区/小区/经销商范围控制，和其他模块使用同一数据范围；不要自建另一套 RLS、权限集合、授权缓存或角色/HQ/nationalComplete 推断。
+- 当前 single source of truth：小订目标 = 当前顶部范围内已配置目标门店的目标合计；实际 = 当前顶部范围内 MG 07 小订合计；达成 = 实际 / 目标。父级范围内部分门店无目标时，仍按“范围内实际 / 已配置目标合计”计算。
+- 独立点：小订日期固定完整小订期 `2026-07-29`～`2026-08-22`，不跟顶部日期筛选联动；车系筛选也不影响小订模块。
+- 无目标语义：门店无目标时目标显示“未设目标”，达成率显示“--”；范围为空或上游范围不可得时，按现有主链路同构降级，不做 RLS fallback。
+- 技术边界：`organizationRows` 只做 canonical 与层级映射，不作为第二权限系统；全国 QA 仅后台数据质量检查，不阻断业务运行时，不展示全国合同技术字段。
+- 交付事实：本地开发、Review、QA 已完成并发布测试 App `q0844640cf6734877a3193d6`；发布回执为 `operation=update`、`fileKey=6c04817e-a964-4c58-a5a6-6728b3f0da34`，zip SHA-256=`eb77189d15f55900ab490d098ce223e1cbfaa842fe1d07b52f06bbdcb3df7fa6`。
+- 线上验证缺陷：总部全国摘要目标显示 `29714`，应为 `30001`；根因方向是 valid primary / 组织归因交集错误扣除了 8 家目标合计 `287`。v2.01 历史交付证据保留，但其摘要分母语义被 v2.02 替代。
+
+## [v2.00] - 2026-07-28（已被 v2.01 替代）
+
+### MG 07 小订授权范围运行时合同（需求已确认，待开发/未发布）
+- 用户变更：MG 07 小订不是所有门店都指定目标；区域人员只能看本区域，不能看全国。v2.00 作为当前运行时 single source of truth，替代 v1.97～v1.99 中把 `403/30001/7` 全国固定值作为区域运行时验收的旧假设；历史已完成证据保留为历史事实，不改写。
+- 范围口径：设当前用户授权一级经销商集合为 `S`。小订目标 = `S` 内已配置目标门店的目标之和；累计小订 = `S` 内所有门店 MG 07 小订之和，包括未设目标但有小订；目标达成 = 累计小订 / 小订目标。目标表或事实表范围外行不展示、不计算。
+- 未设目标语义：未设目标但有实际时，实际计入父级累计；门店层目标显示“未设目标”，达成率显示“--”，不得显示 `0%`、落后或风险。未设目标且无实际的门店可不出现在清单。
+- 运行时校验：先取 `S`，目标与实际都和 `S` 取交集；允许授权门店无目标，区域只返回部分目标是正常情况。重复同一目标代码或非法数字导致目标总额不可信时，范围内 fail-closed；单行无法唯一映射时隔离该行并展示业务文案告警，不把技术 key 暴露给业务用户。本条为 v2.00 历史口径，当前未归属目标展示边界以 v2.03 静默审计为准。
+- 页面与错误：页面层级固定为 `HQ -> 大区`、`大区 -> 小区`、`小区 -> 门店`；运行时撤掉全国固定 `403/30001` 熔断。全国合同可保留为后台管理员数据质量检查，但不展示 `configuredRows/canonicalUniqueCodes/targetTotal/areaCount` 等技术字段，且不得阻断区域用户。
+- 验收与发布边界：新增 `SCOPE-030 / REQ-014 / AC-372～AC-386` 与 DEV-PLAN Phase 3AN；覆盖 HQ/region/district/store、未设目标有实际、无目标无实际、范围外目标/事实、重复、非法数字、单行映射告警、页面不展示技术字段和后台全国 QA 非阻断。发布只允许 `q0844640cf6734877a3193d6`，shared settings 保持 `production`，仅 staging-only 使用 `test`，不触达 `re37/x944/新App`。本条为 v2.00 历史口径，当前验收追加 v2.03 的“业务页面不展示未归属目标提示/警告”。
+
+## [v1.99] - 2026-07-28
+
+### q084 发布后 CSS 路径与角色兼容合同（需求已确认，待开发/待复验）
+- 用户变更：刚发布到测试 App `q0844640cf6734877a3193d6` 后，线上截图呈现裸 HTML，同时出现角色异常 `marketing_orgType 不在已配置范围`；本轮只同步正式文档，未改源码、未发布、未 commit/push。
+- CSS 根因确认：发布 staging 漏带 `vite.config.ts`，导致 staging build 生成的 `dist/index.html` CSS href 为 `/assets/index-DIoWYvru.css`；zip 内虽含 CSS，但 open-app 子路径下绝对 `/assets/` 取不到资源。正常共享 `dist` 为 `./assets/...`。
+- 角色根因确认：v1.98 将 `userType=4` 且非 `HQ/RFS/MAC` 的真实非空 `marketing_orgType` fail-closed 到全应用不可用，真实枚举未覆盖，导致应用加载被锁死。
+- 新角色合同：`RFS/MAC` 仍优先识别为大区/小区；`userType=4 + 未识别非空 orgType` 不得锁死整个应用，进入可审计的兼容/总部候选态以维持应用加载。但 MG 07 小订全国合同仍只能在 `role=headquarters && nationalComplete===true` 时执行；`nationalComplete=false` 时必须按 RLS `validDealers` scoped 或 fail-closed；未知身份、缺 `userType` 且缺 `orgType`、或缺双字段不得扩权。
+- 发布包合同：只允许发布 q084；发布 staging 必须包含 `vite.config.ts` 或直接使用已验证 `dist`；zip 内 `dist/index.html` 的 CSS 引用必须是 `./assets/...`，禁止 `/assets/...`。
+- QA 合同：必须以 `/open-apps/q0844640cf6734877a3193d6/` 子路径模拟线上，断言 CSS 资源 200 且样式生效；覆盖 `userType=4 + 未识别非空 orgType + regional RLS` 不锁死、不中断应用加载、且不触发全国 audit。
+- 登录态线上验收：必须同时确认样式恢复、角色异常消失、小订全国错误横幅消失；未完成这三项不得写完成。
+
+## [v1.98] - 2026-07-28
+
+### MG 07 小订全国合同双钥与角色识别收紧（需求已确认，待开发/未发布）
+- 用户变更：线上区域账号仍报全国合同字段 `configuredRows/canonicalUniqueCodes/targetTotal/areaCount/...`，本轮只同步需求与开发计划，未改源码、未发布、未 commit/push。
+- 根因确认：`organization-view.js` 缺 `marketing_userType` 时提前默认 `headquarters`，未先识别 `marketing_orgType=RFS/MAC`；`app.js` 已算 `nationalComplete` 但 `loadSmallOrder` 未传；`small-order-contract` 只凭 `role=headquarters` 进入 `mode=all`，忽略区域 RLS `validDealers`；`index.html` 小订资源版本串未更新导致缓存放大。
+- 合同收紧：`role=HQ/headquarters` 只是全国合同必要非充分条件；仅 `role=headquarters && nationalComplete===true` 才允许执行全国 `auditTargets`。HQ 标签但 `nationalComplete !== true` 时，禁止全国合同，优先按 RLS `validDealers` / 明确组织证据走受限 scope；无法证明则 fail-closed。
+- 透传要求：`nationalComplete` 必须从 `app.js -> small-order-api/cache/raw -> small-order-contract/model` 全链透传，并进入 cache identity，避免旧全国合同缓存污染区域账号。
+- 角色识别：`marketing_userType` 缺失但 `marketing_orgType=RFS/MAC` 时仍识别为大区/小区；缺 `userType` 且缺 `orgType` 的未知身份不得默认 HQ 用于全国合同。
+- 静态资源：发布包必须更新 `organization-view.js`、`app.js`、`small-order-api.js`、`small-order-contract.js`、`small-order-model.js` 的版本参数，建议统一 `20260728-mg07-rls-v198` 或同等可审计新串。
+- 验收矩阵：覆盖 `userType=4+RFS`、缺 `userType` + `RFS`、缺 `userType` 且无 `orgType` + 区域 RLS、`MAC`、明确 HQ + 全国完整、HQ 标签 + 区域 RLS、缓存版本断言。
+- 发布边界：只允许发布既有测试 App `q0844640cf6734877a3193d6`；绝不触达 `re37`、`x944` 或新 App。登录态线上验收必须确认错误横幅消失、区域账号只见本范围；未验不得写完成。
+
+## [v1.97] - 2026-07-28
+
+### MG 07 小订 RLS 范围感知合同修复（已发布测试App，发布后条件PASS）
+- 用户变更：修复区域行权限下 MG07 小订合同误报，并在修复后发布测试 App。当前根因是 `small-order-model.js` 先把全国 `403` 目标与受 RLS 裁剪的区域组织行映射，执行全国固定 QA 后早退，导致后续 `permissionScope/visibleTargets` 未参与合同判定；区域行权本身正确，不得取消。
+- 新增合同：`SCOPE-029 / REQ-014 / AC-359～AC-371` 与 DEV-PLAN Phase 3AL。HQ 继续执行全国固定合同：目标源 `404` 行、排除总计后 `403` 家、目标 `30001`、零目标 `17`、`7` 大区、`MQ257T -> MQ256T`、必需样本与全国守恒均保留。
+- scoped contract：region/district/store 必须先确定当前用户 scope，再只处理 scope 内目标和实际；必须验证 scope source/mapped/unique/targetTotal 守恒、`unmapped=0`、scope 内缺映射 fail-closed、scope 外目标不报错。不得简单关闭 `enforceTargetContract`、扩大权限或隐藏异常。
+- 权限边界：目标表仍可全量读取用于 HQ 合同和裁剪输入，但用户只看到权限范围目标；目标表 `区域/MAC` 不得成为权限字段。`MQ257T -> MQ256T`、必需样本等全国特例只归全国合同；范围内若含修正样本仍必须正确映射。
+- 测试边界：必须含 HQ 全量、区域子集、小区子集、门店、范围内缺映射 fail-closed、范围外目标不报错、RLS 子集真实形态；禁止所谓 real replay 仅 synthetic 不标识。
+- 发布边界：发布目标唯一为测试 App `q0844640cf6734877a3193d6`；shared source settings 保持 `production`，仅 staging-only 使用 `test`；不得触达 `re37`、`x944` 或创建新 App。
+- 完成状态：本地实现、Code Review、独立 QA 代码门禁和隔离测试 App 发布均已完成，AC-359～AC-371 已关闭。Code Review Stage 1/2 PASS，P0/P1/P2=`0/0/1`，唯一 P2 为 `small-order-contract.js` 375 行后续拆分建议。
+- 发布回执：测试 App `q0844640cf6734877a3193d6` 已成功 `operation=update`，`version=0.1.0`，URL=`https://rdata-pv.rauto.com/open-apps/q0844640cf6734877a3193d6/`，标准回执未返回 `fileKey`；未触达 `re37`、`x944` 或新 App，未 commit/push。
+- 发布包核验：zip=`/private/var/folders/3f/mvqcsp_x4qv1g3f8cghnfszh0000gn/T/multistore-v197-release-qbuTUH/multi-store-super-app/dist.0.1.0.zip`，SHA-256=`4c94cad73df49a084dcde855f95cbf2d879b5d4c78f67c8803be7b6629e3b58e`，`176287` bytes，解包 `38 files / 744334 bytes`，`unzip` PASS。staging/zip settings 为 `test`，shared source settings 仍为 `production`，hash=`f76174fe...`。
+- 发布后独立 QA 条件 PASS：P0/P1/P2=`0/0/2`，zip/hash/settings/source-dist/RLS 代码/隐私均通过；未完成登录态业务 UI 和线上资源时间核对，需用户已登录刷新确认无 `小订目标合同不守恒` 横幅且区域范围正确。当前不代表线上业务验收通过，不回滚不重发。
+
+## [v1.96] - 2026-07-28
+
+### MG 07 修复包恢复测试发布（发布准备中/门禁修复中，未发布）
+- 用户变更：最新指令为 `发布多店测试APP`。这是 ASM-020 中“若后续要恢复测试发布，应另发需求”的新需求，不改写 v1.90 q084 production 发布历史。
+- 发布目标：唯一目标为既有多店测试 App `q0844640cf6734877a3193d6`；不得触达生产多店 App `re37c3447cb0443a68a36a40`、旧多店 App `x944c089c3c4249ea925fde6` 或创建新 App。
+- 配置边界：共享源码 `multi-store-super-app/settings.json` 继续保持 `environment=production`；测试配置只允许存在于隔离 staging。staging 发布包内 `settings.environment` 必须为 `test`，单店跳转必须指向测试单店 `r8ce093b6d93143d8aa6852f`，同时保留 production 映射 `aca59d2e2e60f4be4b8b93ac`。
+- 第一轮 staging 门禁事实：Node 测试 `190` 中 `188` 通过、`2` 项失败；失败原因是旧 `production` 测试合同与本轮 staging-only `test` 期望冲突。尚未调用 `guancli`，不得写成发布成功。
+- 后续放行条件：只在 staging 中修正相关测试期望为 `environment=test` / 测试单店 URL；必须全量通过 Node、lint、build、PC Playwright、critical audit、隐私扫描、source-dist 一致和 zip/hash 门禁后，才允许执行测试 App 发布。
+- 发布后验收：必须记录平台 `operation=update`、zip SHA/大小/完整性、source-dist 一致、隐私扫描和独立 QA 结论；匿名 `401/302` 仅为认证/平台壳边界，不代表登录态 UI 或业务数据验收。
+- 本轮文档同步范围：仅更新 `Product-Spec.md`、`Product-Spec-CHANGELOG.md`、`DEV-PLAN.md`、`README.md`；不改业务代码、不改 settings 源码、不 commit/push、不发布。
+
+## [v1.95] - 2026-07-27
+
+### MG 07 小订战报 Demo 视觉纠偏（本地开发+Review+独立QA完成，未发布/未commit）
+- 纠偏结论：旧 `qa-screenshots/mg07-small-order-final/QA-REPORT.md` 的总体 PASS 因未逐项对照 `.superpowers/brainstorm/38050-1785145297/content/mg07-layout-a-status-v7.html` 和用户确认截图 `/var/folders/3f/mvqcsp_x4qv1g3f8cghnfszh0000gn/T/codex-clipboard-855b13d5-f523-4da1-bc54-1edfd1b983fb.png`，不能继续作为 MG 07 小订战报视觉完成声明。
+- 保留子项：v1.94 已验证的数据合同、真实 `dsId=h8ae7b66fd5d141ec95bd246`、目标 403/30001 守恒、权限裁剪、固定日期边界、异常语义、独立请求/下钻状态、非目标边界和工程门禁作为子项证据保留；不因本次视觉纠偏推翻。
+- 当前实现状态：v1.95 代码已实现且 Review 回修完成，门禁已通过 Node `190/190`、lint `57 files`、build PASS、PC Playwright `116/116`、critical audit `0`、diff-check PASS、source/dist 一致和隐私扫描；六张 fixture 实现截图已写入 `qa-screenshots/mg07-small-order-demo-repair/`，文件名均含 `demo-fixture`。
+- AC 状态更新 `REQ-014 / AC-326、AC-327、AC-341、AC-343、AC-346、AC-351、AC-353～AC-358`：页面 DOM 顺序为 `销售总览` 标题/筛选 → `MG 07小订战报` → `销售指标`/`过程指标` → `门店销售表现`；默认摘要常驻、达成表现收起、独立下钻状态不污染主组织状态。当前为本地实现 PASS、Review 回修完成、最终独立 QA PASS；未发布、未 commit，线上登录态与 16 组 `READER` 未执行。
+- 锁定 Demo 视觉合同：标题右侧独立状态 Badge；副标题固定为小订期 + 真实动态数据截止时间 + 独立于销售日期和车系筛选；五卡顺序为 `小订目标`、`累计小订`、`目标达成`、`时间进度`、第五动态位；目标蓝、风险红、累计含留存/退订、第五动态位展示落后对象数和总对象数。
+- 锁定比较条合同：摘要下方展示达成/时间进度比较条，文案使用 `pp` 领先/落后，蓝色实际条表示目标达成，橙色竖向刻度表示时间进度，右侧按钮带对象数、箭头和 `aria-expanded`。
+- 视觉 QA 证据规则更新：Demo 只有一份已确认浅色参考，不得伪造暗色或多宽度 Demo 基线；证据采用一份 canonical Demo 基线链接/截图 + 六张实际实现图（1280/1366/1440 × light/dark）+ 每行人工差异结论。fixture 或 mock 截图必须明确标识，不能冒充业务真实数据、登录态线上验收或观远真实查询通过。
+- Review 回修证据：actual-only 实际行 `data_updated_at` 边界已修复；深色主题对比度为 `8.04/7.81`。本地开发、Review 和独立 QA 已完成；仍未发布、未 commit，线上登录态与 16 组 `READER` 未执行。
+- DEV-PLAN Phase 3AJ 状态同步为“本地开发+Review+独立QA完成，未发布/未commit，线上登录态与16组READER未执行”；本轮文档仅同步事实源和证据矩阵，不 commit、不发布。
+
 ## [v1.94] - 2026-07-27
 
 ### PC MG 07 小订战报独立模块（本地开发与独立审查完成，未发布）
@@ -11,7 +288,7 @@
 - 同步最新核验修正：`MQ257T` 是 Excel 代码笔误，不是未入维表门店；目标行名称 `溧阳名锐`、目标 45，必须在清洗上传时规范化为权威一级经销商代码 `MQ256T`（溧阳名锐汽车销售服务有限公司，`4苏皖区 / SQR700 / 罗恩 SMG503`，开业非二网）。原 Excel 不改，清洗目标数据增加 `原一级经销商代码=MQ257T`、`canonical一级经销商代码=MQ256T`、`代码修正说明=权威维表按经销商简称唯一命中`。
 - 代码 0 命中时，才允许用 `经销商简称 + 区域全称 + MAC姓名` 在权威维表唯一匹配生成 canonical code；目标表 `区域/MAC` 文本只用于展示或审计，不直接成为权限字段、组织汇总字段或下钻字段。0 命中或多命中进入 `organization_unmapped` 并 fail-closed。
 - 实际源固定为销售事实源 `k4c14c31c595540a0a771f50`，过滤 `品牌名称=MG`、`汇报车系名称=MG 07`、日期字段 `日yyyy-mm-dd`，聚合 `当日首触小订数`、`当日首触留存小订数`、`当日首触小订退订数`，`调度时间` 作为更新时间；`当日首触小订转大定数` 当前隐藏。
-- 异常语义锁定：`zero_target_actual` 的实际计入累计和上层达成但自身达成率为 `--`；`unconfigured_actual` 的实际只计入累计，不进入达成分母和默认落后列表；`organization_unmapped` 的目标与实际均排除可见计算。
+- 历史异常语义：v1.94 的 `unconfigured_actual` 和 `organization_unmapped` 旧处理方式已被 v2.02 覆盖。当前口径为未设目标实际计入当前范围 `累计小订` 和 summary `目标达成`分子，门店层显示“未设目标/--”、不判落后、不显示风险，并允许作为未设目标实际行出现在小订达成清单；`organization_unmapped` 的目标摘要计入语义同样以 v2.02 为准。
 - QA 已证明 403 行 / 30001 目标守恒、8 家异常状态映射可追溯、`MQ257T -> MQ256T` 唯一名称映射、角色权限不扩张合同、4 个日期边界、1280/1366/1440 浅深主题、非目标主链路不回归。
 - 完成证据：Code Review Stage1/Stage2 PASS，P0/P1/P2=`0/0/0`；Node `187/187`、lint Syntax check `56 files`、build PASS、PC Playwright `111/111`、critical audit `0`、source/dist 一致、隐私扫描通过。目标真实回放 `404/1/403`，唯一原代码 / canonical 代码均 `403`，目标 `30001`、零目标 `17`、`7` 区、`organization_unmapped=0`，`395/8/287` 逐码逐值，`MQ257T -> MQ256T` 已闭环；文件拆分后 `small-order-contract.js` 约 `284` 行、`small-order-model.js` 约 `138` 行。
 - 锁定非目标：不改销售总览、过程分析、打铁指标、负向问题率、门店详情跳转、销售导出、截图协议、移动端、父应用筛选器、转大定展示、依赖或发布配置。当前仅完成本地开发与独立审查，尚未发布，尚未完成登录态生产页面验收，目标数据集对 16 个业务用户组的 `READER` 权限同步仍等待用户明确授权；未 commit/push。

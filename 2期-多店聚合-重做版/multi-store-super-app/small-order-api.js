@@ -1,7 +1,5 @@
 (function (root) {
   const cfg = () => root.SmallOrderConfig;
-  const pendingRequests = new Map();
-  const organizationRowsCache = new Map();
 
   function clean(value) {
     return value == null ? "" : String(value).trim();
@@ -86,7 +84,6 @@
     if (clean(detailValue(detail, ["parentDirId", "parent_id", "parentId"])) !== config.expectedTargetParentDirId) throw new Error(`目标数据集 parentDirId 不匹配：${clean(detailValue(detail, ["parentDirId", "parent_id", "parentId"])) || "--"}`);
     if (clean(detailValue(detail, ["status", "syncStatus", "state"])) !== config.qa.datasetStatus) throw new Error(`目标数据集状态不是 ${config.qa.datasetStatus}`);
     if (fieldsOf(detail).length !== config.qa.columnCount) throw new Error(`目标数据集列数不是 ${config.qa.columnCount}`);
-    if ((rows || []).length !== config.qa.sourceRows) throw new Error(`目标数据集行数不是 ${config.qa.sourceRows}`);
   }
 
   function assertFields(detail, fields) {
@@ -95,106 +92,115 @@
     if (missing.length) throw new Error(`目标数据集缺少必需字段：${missing.join("、")}`);
   }
 
-  function requestKey({ params, validDealers, options, config, period }) {
-    const scope = [...new Set((validDealers || []).map((dealer) => clean(dealer.code)).filter(Boolean))].sort();
-    return JSON.stringify({
-      module: "mg07SmallOrder",
-      user: params.personId || params.userId || "",
-      role: options.roleResult?.role || "",
-      roleOk: options.roleResult?.ok === true,
-      entryLevel: options.entryLevel || "",
-      permissionScope: scope,
-      drillPath: options.drillPath || [],
-      targetDsId: config.targetDsId,
-      actualDsId: config.actualDsId,
-      organizationDsId: config.organizationDsId,
-      period: config.period,
-      cutoffDate: period.cutoffDate,
-      params: { areaCode: clean(params.areaCode), area: clean(params.area), districtCode: clean(params.districtCode), district: clean(params.district), dealerCode: clean(params.dealerCode), store: clean(params.store) }
-    });
-  }
-
   function periodActualRange(todayInput) {
     return root.SmallOrderModel.periodInfo(todayInput, cfg().PERIOD).actualRange;
   }
 
-  function organizationCacheKey(config, brand = "MG") {
-    return JSON.stringify({ organizationDsId: config.organizationDsId, brand });
+  function isSpecificNonMgBrand(params = {}) {
+    const brand = clean(params.brand);
+    return Boolean(brand) && brand !== "MG" && brand !== "全部" && brand !== "全部品牌";
   }
 
-  function organizationBrandFilters(brand = "MG") {
-    return [{ field: "brand_name", type: "EQ", value: brand }];
+  function errorText(error) {
+    return error instanceof Error ? error.message : String(error || "");
   }
 
-  function loadOrganizationRows(config, transport, options = {}) {
-    const key = organizationCacheKey(config, "MG");
-    if (organizationRowsCache.has(key)) return organizationRowsCache.get(key);
-    const promise = transport.allRows(config.organizationDsId, organizationBrandFilters("MG"), 200000, options).then((rows) => {
-      const resolved = Promise.resolve(rows);
-      organizationRowsCache.set(key, resolved);
-      return rows;
-    }, (error) => {
-      organizationRowsCache.delete(key);
-      throw error;
-    });
-    organizationRowsCache.set(key, promise);
-    return promise;
+  function unavailableRaw({ config, period, identity, params, organizationRows, validDealers, entryLevel, rawError, error = "MG 07 小订数据暂不可用" }) {
+    return { status: "target_unavailable", error, rawError, config, period, identity, params, targetRows: [], actualRows: [], todayRows: [], actualStatus: "not_loaded", todayStatus: "not_loaded", organizationRows: organizationRows || [], validDealers: validDealers || [], entryLevel, enforceTargetContract: true };
+  }
+
+  function dealerName(dealer) {
+    return clean(dealer.name || dealer.dealerName || dealer.dealerShortName || dealer.parentDealerShortName || dealer.store || dealer.storeName);
+  }
+
+  function parentDealerCode(dealer) {
+    return clean(dealer.parentDealerCode || dealer.parent_dealer_code || dealer.parentDealerCompanyCode || dealer.parentCompanyCode || dealer.dealerCompanyCode || dealer.code || dealer.dealerCode);
+  }
+
+  function dealerCode(dealer) {
+    return clean(dealer.code || dealer.dealerCode || dealer.dealer_code);
+  }
+
+  function validDealerOrganizationRows(validDealers = []) {
+    return (validDealers || []).map((dealer) => {
+      const parentCode = parentDealerCode(dealer);
+      const leafCode = dealerCode(dealer) || parentCode;
+      const parentName = clean(dealer.parentDealerShortName || dealer.parentDealerName || dealer.parent_dealer_shortnm) || dealerName(dealer) || parentCode;
+      const name = dealerName(dealer) || parentName || leafCode;
+      return {
+        brand_name: "MG",
+        parent_dealer_code: parentCode,
+        dealer_code: leafCode,
+        parent_dealer_shortnm: parentName,
+        dealer_shortnm: name,
+        rfs_code: clean(dealer.areaCode || dealer.rfsCode),
+        rfs_name: clean(dealer.area || dealer.areaName),
+        rfs_shortnm: clean(dealer.areaShortName || dealer.area || dealer.areaName),
+        mac_code: clean(dealer.districtCode || dealer.macCode),
+        mac_name: clean(dealer.district || dealer.districtName),
+        mac_shortnm: clean(dealer.districtShortName || dealer.district || dealer.districtName),
+        open_mec_stat_name: clean(dealer.openStatus || dealer.status) || "开业",
+        is_scd_net_dealer: clean(dealer.networkType || dealer.isScdNetDealer) || "否",
+        web_display_name: clean(dealer.officialName || dealer.webDisplayName || name)
+      };
+    }).filter((row) => row.parent_dealer_code);
   }
 
   async function loadSmallOrderRaw(params = {}, validDealers = [], options = {}) {
     const config = cfg().currentSmallOrderConfig();
     const period = root.SmallOrderModel.periodInfo(options.today, config.period);
-    const cacheKey = requestKey({ params, validDealers, options, config, period });
-    if (pendingRequests.has(cacheKey)) return pendingRequests.get(cacheKey);
-    const promise = loadSmallOrderRawOnce(params, validDealers, options, config, period);
-    pendingRequests.set(cacheKey, promise);
-    const clear = () => pendingRequests.delete(cacheKey);
-    promise.then(clear, clear);
-    return promise;
+    return loadSmallOrderRawOnce(params, validDealers, options, config, period);
   }
 
   async function loadSmallOrderRawOnce(params = {}, validDealers = [], options = {}, config, period) {
+    const organizationRows = validDealerOrganizationRows(validDealers);
     const identity = {
       module: "mg07SmallOrder",
       user: params.personId || params.userId || "",
-      role: options.roleResult?.role || "",
-      roleOk: options.roleResult?.ok === true,
       entryLevel: options.entryLevel || "",
-      permissionScope: validDealers.map((dealer) => clean(dealer.code)).sort(),
+      permissionScope: [...new Set(organizationRows.map((row) => row.parent_dealer_code))].sort(),
       targetDsId: config.targetDsId,
       actualDsId: config.actualDsId,
-      organizationDsId: config.organizationDsId,
       period: config.period,
       cutoffDate: period.cutoffDate,
       drillPath: options.drillPath || [],
-      params: { areaCode: clean(params.areaCode), area: clean(params.area), districtCode: clean(params.districtCode), district: clean(params.district), dealerCode: clean(params.dealerCode), store: clean(params.store) }
+      params: { brand: clean(params.brand), areaCode: clean(params.areaCode), area: clean(params.area), districtCode: clean(params.districtCode), district: clean(params.district), dealerCode: clean(params.dealerCode), store: clean(params.store) }
     };
-    if (!config.ok) return { status: "target_unavailable", error: config.error, config, period, identity, params, targetRows: [], actualRows: [], organizationRows: [], validDealers, roleResult: options.roleResult, entryLevel: options.entryLevel, enforceTargetContract: true };
-    const transport = root.RegionDataApi?.__transport;
-    if (!transport?.allRows || !transport?.executeSqlRows) throw new Error("小订数据传输接口不可用");
+    if (!config.ok) return unavailableRaw({ config, period, identity, params, organizationRows: [], validDealers, entryLevel: options.entryLevel, rawError: config.error, error: "MG 07 小订目标数据暂不可用" });
+    if (isSpecificNonMgBrand(params)) return { status: "ready", error: "", emptyReason: "non_mg_brand", config, period, identity, params, targetRows: [], actualRows: [], todayRows: [], actualStatus: "not_loaded", todayStatus: "not_loaded", actualError: "", todayError: "", organizationRows, validDealers, entryLevel: options.entryLevel, enforceTargetContract: true };
+    if (!organizationRows.length) return { status: "ready", error: "", config, period, identity, params, targetRows: [], actualRows: [], todayRows: [], actualStatus: "not_loaded", todayStatus: "not_loaded", actualError: "", todayError: "", organizationRows: [], validDealers: [], entryLevel: options.entryLevel, enforceTargetContract: true };
     try {
+      const transport = root.RegionDataApi?.__transport;
+      if (!transport?.allRows || !transport?.executeSqlRows) throw new Error("小订数据传输接口不可用");
       const targetPromise = Promise.all([
         datasetDetail(config.targetDsId, options),
-        transport.allRows(config.targetDsId, [], 10000, options),
-        loadOrganizationRows(config, transport, options)
+        transport.allRows(config.targetDsId, [], 10000, options)
       ]);
       const actualPromise = period.actualRange
         ? transport.executeSqlRows(config.actualDsId, smallOrderActualSql(period.actualRange), 5000, { ...options, failOnLimit: true })
         : Promise.resolve([]);
-      const [targetResult, actualResult] = await Promise.allSettled([targetPromise, actualPromise]);
+      const todayPromise = period.todayRange
+        ? transport.executeSqlRows(config.actualDsId, smallOrderActualSql(period.todayRange), 5000, { ...options, failOnLimit: true, smallOrderTodayQuery: true })
+        : Promise.resolve([]);
+      const [targetResult, actualResult, todayResult] = await Promise.allSettled([targetPromise, actualPromise, todayPromise]);
       if (targetResult.status === "rejected") throw targetResult.reason;
-      const [targetDetail, targetRows, organizationRows] = targetResult.value;
+      const [targetDetail, targetRows] = targetResult.value;
       assertTargetDataset(targetDetail, targetRows, config);
       assertFields(targetDetail, config.targetFields);
       const actualRows = actualResult.status === "fulfilled" ? actualResult.value : [];
+      const todayRows = todayResult.status === "fulfilled" ? todayResult.value : [];
       const actualStatus = period.actualRange ? actualResult.status === "fulfilled" ? "ready" : "actual_unavailable" : "not_started";
-      const actualError = actualResult.status === "rejected" ? actualResult.reason instanceof Error ? actualResult.reason.message : String(actualResult.reason) : "";
-      return { status: "ready", error: "", config, period, identity, params, targetDetail, targetRows, actualRows, actualStatus, actualError, organizationRows, validDealers, roleResult: options.roleResult, entryLevel: options.entryLevel, enforceTargetContract: true };
+      const todayStatus = period.todayRange ? todayResult.status === "fulfilled" ? (todayRows.length ? "ready" : "no_data") : "today_unavailable" : "out_of_period";
+      const rawActualError = actualResult.status === "rejected" ? errorText(actualResult.reason) : "";
+      const rawTodayError = todayResult.status === "rejected" ? errorText(todayResult.reason) : "";
+      const actualError = rawActualError ? "MG 07 小订实际数据暂不可用" : "";
+      const todayError = rawTodayError ? "MG 07 小订今日新增数据暂不可用" : "";
+      return { status: "ready", error: "", config, period, identity: { ...identity, authorizedDealerCodes: identity.permissionScope }, params, targetDetail, targetRows, actualRows, todayRows, actualStatus, todayStatus, actualError, todayError, rawActualError, rawTodayError, organizationRows, validDealers, entryLevel: options.entryLevel, enforceTargetContract: true };
     } catch (error) {
-      return { status: "target_unavailable", error: error instanceof Error ? error.message : String(error), config, period, identity, params, targetRows: [], actualRows: [], actualStatus: "not_loaded", organizationRows: [], validDealers, roleResult: options.roleResult, entryLevel: options.entryLevel, enforceTargetContract: true };
+      return unavailableRaw({ config, period, identity, params, organizationRows, validDealers, entryLevel: options.entryLevel, rawError: errorText(error), error: "MG 07 小订数据暂不可用" });
     }
   }
 
   root.SmallOrderApi = { loadSmallOrderRaw, smallOrderActualSql, periodActualRange, datasetDetail };
-  if (root.__SMALL_ORDER_TEST__ === true) root.SmallOrderApi.__test = { organizationBrandFilters, loadOrganizationRows };
+  if (root.__SMALL_ORDER_TEST__ === true) root.SmallOrderApi.__test = { validDealerOrganizationRows };
 })(typeof window !== "undefined" ? window : globalThis);
